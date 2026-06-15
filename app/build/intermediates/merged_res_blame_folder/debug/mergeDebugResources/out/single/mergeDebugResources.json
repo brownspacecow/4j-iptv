@@ -1,0 +1,14 @@
+[
+    {
+        "merged": "com.iptv.fourj.app-debug-57:/drawable_ic_launcher_foreground.xml.flat",
+        "source": "com.iptv.fourj.app-main-59:/drawable/ic_launcher_foreground.xml"
+    },
+    {
+        "merged": "com.iptv.fourj.app-debug-57:/drawable_ic_launcher_background.xml.flat",
+        "source": "com.iptv.fourj.app-main-59:/drawable/ic_launcher_background.xml"
+    },
+    {
+        "merged": "com.iptv.fourj.app-debug-57:/drawable_ic_launcher.xml.flat",
+        "source": "com.iptv.fourj.app-main-59:/drawable/ic_launcher.xml"
+    }
+]
