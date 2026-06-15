@@ -23,6 +23,9 @@ class XtreamApi(private val provider: Provider) {
                 coerceInputValues = true
             })
         }
+        install(io.ktor.client.plugins.DefaultRequest) {
+            header(HttpHeaders.UserAgent, "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Mobile Safari/537.36")
+        }
     }
 
     private fun buildAuthUrl(action: String = "", extraParams: Map<String, String> = emptyMap()): String {
@@ -39,7 +42,7 @@ class XtreamApi(private val provider: Provider) {
         val url = buildAuthUrl()
         val response = client.get(url)
         val text = response.bodyAsText()
-        return Json { ignoreUnknownKeys = true; coerceInputValues = true }.decodeFromString(text)
+        return Json { ignoreUnknownKeys = true; isLenient = true }.decodeFromString(text)
     }
 
     suspend fun getLiveCategories(): List<LiveCategory> {
@@ -82,6 +85,21 @@ class XtreamApi(private val provider: Provider) {
 
     suspend fun getShortEpg(streamId: String): List<EpgListing> {
         val url = buildAuthUrl("get_short_epg", mapOf("stream_id" to streamId))
+        return client.get(url).body()
+    }
+
+    suspend fun searchLiveStreams(query: String): List<LiveStream> {
+        val url = buildAuthUrl("get_live_streams", mapOf("search" to query))
+        return client.get(url).body()
+    }
+
+    suspend fun searchVodStreams(query: String): List<VodStream> {
+        val url = buildAuthUrl("get_vod_streams", mapOf("search" to query))
+        return client.get(url).body()
+    }
+
+    suspend fun searchSeriesStreams(query: String): List<SeriesStream> {
+        val url = buildAuthUrl("get_series", mapOf("search" to query))
         return client.get(url).body()
     }
 

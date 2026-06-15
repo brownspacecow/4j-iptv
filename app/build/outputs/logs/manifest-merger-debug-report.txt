@@ -154,11 +154,11 @@ MERGED from [androidx.versionedparcelable:versionedparcelable:1.1.1] C:\Users\su
 	android:label
 		ADDED from C:\Users\sun\opencode\4j-iptv\app\src\main\AndroidManifest.xml:14:9-41
 	android:icon
-		ADDED from C:\Users\sun\opencode\4j-iptv\app\src\main\AndroidManifest.xml:13:9-45
+		ADDED from C:\Users\sun\opencode\4j-iptv\app\src\main\AndroidManifest.xml:13:9-43
 	android:allowBackup
 		ADDED from C:\Users\sun\opencode\4j-iptv\app\src\main\AndroidManifest.xml:12:9-35
 	android:banner
-		ADDED from C:\Users\sun\opencode\4j-iptv\app\src\main\AndroidManifest.xml:18:9-47
+		ADDED from C:\Users\sun\opencode\4j-iptv\app\src\main\AndroidManifest.xml:18:9-45
 	android:theme
 		ADDED from C:\Users\sun\opencode\4j-iptv\app\src\main\AndroidManifest.xml:16:9-47
 	android:usesCleartextTraffic

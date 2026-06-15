@@ -3,16 +3,52 @@
     android:height="48dp"
     android:viewportWidth="48"
     android:viewportHeight="48">
+
+    <!-- Dark background -->
     <path
-        android:fillColor="#0D0D0D"
-        android:pathData="M0,0h48v48H0z"/>
+        android:fillColor="#0F0F1A"
+        android:pathData="M0,0 h48 v48 h-48 z" />
+
+    <!-- Subtle glow -->
     <path
-        android:fillColor="#E50914"
-        android:pathData="M8,8h4v32h-4z"/>
+        android:fillColor="#00B4D8"
+        android:fillAlpha="0.1"
+        android:pathData="M6,8 C4,8 3,9 3,11 L3,37 C3,39 4,40 6,40 L42,40 C44,40 45,39 45,37 L45,11 C45,9 44,8 42,8 Z" />
+
+    <!-- "4" - Left vertical -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M16,8h4l10,22l10,-22h4v32h-4l0,-22l-10,22l-10,-22l0,22l-4,0z"/>
+        android:pathData="M10,11 h3.5 v26 h-3.5 z" />
+
+    <!-- "4" - Crossbar -->
     <path
-        android:fillColor="#FFB800"
-        android:pathData="M38,8h4v32h-4z"/>
+        android:fillColor="#FFFFFF"
+        android:pathData="M10,22 h14 v3.5 h-14 z" />
+
+    <!-- "4" - Right top vertical -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M20.5,11 h3.5 v14.5 h-3.5 z" />
+
+    <!-- "J" - Vertical -->
+    <path
+        android:fillColor="#00B4D8"
+        android:pathData="M28,11 h3.5 v20 h-3.5 z" />
+
+    <!-- "J" - Bottom bar -->
+    <path
+        android:fillColor="#00B4D8"
+        android:pathData="M25.5,31 h8.5 v3.5 h-8.5 z" />
+
+    <!-- "J" - Bottom hook -->
+    <path
+        android:fillColor="#00B4D8"
+        android:pathData="M25.5,26.5 h3.5 v8 h-3.5 z" />
+
+    <!-- Play triangle -->
+    <path
+        android:fillColor="#00B4D8"
+        android:fillAlpha="0.8"
+        android:pathData="M18,36.5 l5,3 l-5,3 z" />
+
 </vector>

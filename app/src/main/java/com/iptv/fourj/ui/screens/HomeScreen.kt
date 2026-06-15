@@ -31,9 +31,9 @@ import com.iptv.fourj.ui.navigation.Routes
 
 @Composable
 fun HomeScreen(navController: NavHostController, repository: IptvRepository) {
-    var selectedTab by remember { mutableIntStateOf(0) }
-    val tabs = listOf("Live TV", "Movies", "Series")
-    val icons = listOf(Icons.Default.LiveTv, Icons.Default.Movie, Icons.Default.Tv)
+    var selectedTab by remember { mutableIntStateOf(1) } // Default to "Live TV"
+    val tabs = listOf("Search", "Live TV", "Movies", "Series")
+    val icons = listOf(Icons.Default.Search, Icons.Default.LiveTv, Icons.Default.Movie, Icons.Default.Tv)
 
     Row(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         // Sidebar
@@ -52,12 +52,20 @@ fun HomeScreen(navController: NavHostController, repository: IptvRepository) {
                         .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        text = "4J-IPTV",
-                        fontSize = 22.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
+                    Row {
+                        Text(
+                            text = "4",
+                            fontSize = 26.sp,
+                            fontWeight = FontWeight.Black,
+                            color = Color.White
+                        )
+                        Text(
+                            text = "J",
+                            fontSize = 26.sp,
+                            fontWeight = FontWeight.Black,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))
@@ -97,9 +105,10 @@ fun HomeScreen(navController: NavHostController, repository: IptvRepository) {
         // Content area
         Box(modifier = Modifier.weight(1f)) {
             when (selectedTab) {
-                0 -> LiveTabContent(navController, repository)
-                1 -> MoviesTabContent(navController, repository)
-                2 -> SeriesTabContent(navController, repository)
+                0 -> SearchTabContent(navController, repository)
+                1 -> LiveTabContent(navController, repository)
+                2 -> MoviesTabContent(navController, repository)
+                3 -> SeriesTabContent(navController, repository)
             }
         }
     }

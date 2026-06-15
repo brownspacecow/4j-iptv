@@ -1,5 +1,6 @@
 package com.iptv.fourj.data.model
 
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -19,11 +20,11 @@ data class UserInfo(
     val message: String = "",
     val auth: Int = 0,
     val status: String = "",
-    val expDate: String = "",
-    val isTrial: String = "",
-    val activeConnections: String = "",
-    val createdAt: String = "",
-    val maxConnections: String = ""
+    @SerialName("exp_date") val expDate: String = "",
+    @SerialName("is_trial") val isTrial: String = "",
+    @SerialName("active_cons") val activeCons: String = "",
+    @SerialName("created_at") val createdAt: String = "",
+    @SerialName("max_connections") val maxConnections: String = ""
 )
 
 @Serializable
@@ -34,83 +35,85 @@ data class ServerInfo(
     val serverProtocol: String = "",
     val rtmpPort: String = "",
     val timezone: String = "",
-    val timeNow: String = ""
+    val timeNow: String = "",
+    val version: String = "",
+    val xui: Boolean = false
 )
 
 @Serializable
 data class LoginResponse(
-    val userInfo: UserInfo = UserInfo(),
-    val serverInfo: ServerInfo = ServerInfo()
+    @SerialName("user_info") val userInfo: UserInfo = UserInfo(),
+    @SerialName("server_info") val serverInfo: ServerInfo = ServerInfo()
 )
 
 @Serializable
 data class LiveCategory(
-    val categoryId: String,
-    val categoryName: String,
-    val parentId: String = ""
+    @SerialName("category_id") val categoryId: String,
+    @SerialName("category_name") val categoryName: String,
+    @SerialName("parent_id") val parentId: String = ""
 )
 
 @Serializable
 data class LiveStream(
     val num: String = "",
     val name: String,
-    val streamType: String = "",
-    val streamId: String,
-    val streamIcon: String = "",
-    val epgChannelId: String = "",
+    @SerialName("stream_type") val streamType: String = "",
+    @SerialName("stream_id") val streamId: String,
+    @SerialName("stream_icon") val streamIcon: String = "",
+    @SerialName("epg_channel_id") val epgChannelId: String = "",
     val added: String = "",
-    val categoryId: String,
-    val customSid: String = "",
-    val tvArchive: String = "",
-    val directSource: String = "",
+    @SerialName("category_id") val categoryId: String,
+    @SerialName("custom_sid") val customSid: String = "",
+    @SerialName("tv_archive") val tvArchive: String = "",
+    @SerialName("direct_source") val directSource: String = "",
     val rating: String = ""
 )
 
 @Serializable
 data class VodCategory(
-    val categoryId: String,
-    val categoryName: String,
-    val parentId: String = ""
+    @SerialName("category_id") val categoryId: String,
+    @SerialName("category_name") val categoryName: String,
+    @SerialName("parent_id") val parentId: String = ""
 )
 
 @Serializable
 data class VodStream(
     val num: String = "",
     val name: String,
-    val streamType: String = "",
-    val streamId: String,
-    val streamIcon: String = "",
+    @SerialName("stream_type") val streamType: String = "",
+    @SerialName("stream_id") val streamId: String,
+    @SerialName("stream_icon") val streamIcon: String = "",
     val rating: String = "",
-    val rating5based: String = "",
+    @SerialName("rating5based") val rating5based: String = "",
     val added: String = "",
-    val categoryId: String,
-    val containerExtension: String = "",
-    val customSid: String = "",
-    val directSource: String = ""
+    @SerialName("category_id") val categoryId: String,
+    @SerialName("container_extension") val containerExtension: String = "",
+    @SerialName("custom_sid") val customSid: String = "",
+    @SerialName("direct_source") val directSource: String = ""
 )
 
 @Serializable
 data class SeriesCategory(
-    val categoryId: String,
-    val categoryName: String,
-    val parentId: String = ""
+    @SerialName("category_id") val categoryId: String,
+    @SerialName("category_name") val categoryName: String,
+    @SerialName("parent_id") val parentId: String = ""
 )
 
 @Serializable
 data class SeriesStream(
     val num: String = "",
     val name: String,
-    val seriesId: String,
+    @SerialName("series_id") val seriesId: String,
     val cover: String = "",
     val plot: String = "",
     val cast: String = "",
     val director: String = "",
     val genre: String = "",
-    val releaseDate: String = "",
-    val lastModified: String = "",
+    @SerialName("releaseDate") val releaseDate: String = "",
+    @SerialName("last_modified") val lastModified: String = "",
     val rating: String = "",
-    val rating5based: String = "",
-    val categoryId: String = ""
+    @SerialName("rating5based") val rating5based: String = "",
+    @SerialName("category_id") val categoryId: String = ""
 )
 
 @Serializable
@@ -128,53 +131,53 @@ data class SeriesDetail(
     val cast: String = "",
     val director: String = "",
     val genre: String = "",
-    val releaseDate: String = "",
+    @SerialName("releaseDate") val releaseDate: String = "",
     val rating: String = "",
-    val rating5based: String = ""
+    @SerialName("rating5based") val rating5based: String = ""
 )
 
 @Serializable
 data class Season(
-    val airDate: String = "",
-    val episodeCount: Int = 0,
+    @SerialName("air_date") val airDate: String = "",
+    @SerialName("episode_count") val episodeCount: Int = 0,
     val id: Int = 0,
     val name: String = "",
     val overview: String = "",
-    val seasonNumber: Int = 0,
+    @SerialName("season_number") val seasonNumber: Int = 0,
     val cover: String = ""
 )
 
 @Serializable
 data class Episode(
     val id: String = "",
-    val episodeNum: String = "",
+    @SerialName("episode_num") val episodeNum: String = "",
     val title: String = "",
-    val containerExtension: String = "",
+    @SerialName("container_extension") val containerExtension: String = "",
     val info: EpisodeInfo = EpisodeInfo()
 )
 
 @Serializable
 data class EpisodeInfo(
-    val movieImage: String = "",
-    val movieImage2: String = "",
-    val movieImage3: String = "",
-    val movieImage4: String = "",
-    val movieImage5: String = "",
+    @SerialName("movie_image") val movieImage: String = "",
+    @SerialName("movie_image_2") val movieImage2: String = "",
+    @SerialName("movie_image_3") val movieImage3: String = "",
+    @SerialName("movie_image_4") val movieImage4: String = "",
+    @SerialName("movie_image_5") val movieImage5: String = "",
     val plot: String = "",
-    val releasedate: String = "",
+    @SerialName("releasedate") val releasedate: String = "",
     val rating: String = ""
 )
 
 @Serializable
 data class EpgListing(
     val id: String = "",
-    val epgId: String = "",
+    @SerialName("epg_id") val epgId: String = "",
     val title: String = "",
     val lang: String = "",
     val start: String = "",
     val end: String = "",
     val description: String = "",
-    val channelId: String = "",
-    val startTimestamp: String = "",
-    val stopTimestamp: String = ""
+    @SerialName("channel_id") val channelId: String = "",
+    @SerialName("start_timestamp") val startTimestamp: String = "",
+    @SerialName("stop_timestamp") val stopTimestamp: String = ""
 )

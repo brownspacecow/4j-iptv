@@ -47,12 +47,12 @@
 29-->C:\Users\sun\opencode\4j-iptv\app\src\main\AndroidManifest.xml:12:9-35
 30        android:appComponentFactory="androidx.core.app.CoreComponentFactory"
 30-->[androidx.core:core:1.16.0] C:\Users\sun\.gradle\caches\8.9\transforms\51960dce49ff62dddd9de0259232a13d\transformed\core-1.16.0\AndroidManifest.xml:28:18-86
-31        android:banner="@drawable/ic_launcher"
-31-->C:\Users\sun\opencode\4j-iptv\app\src\main\AndroidManifest.xml:18:9-47
+31        android:banner="@drawable/ic_banner"
+31-->C:\Users\sun\opencode\4j-iptv\app\src\main\AndroidManifest.xml:18:9-45
 32        android:debuggable="true"
 33        android:extractNativeLibs="false"
-34        android:icon="@drawable/ic_launcher"
-34-->C:\Users\sun\opencode\4j-iptv\app\src\main\AndroidManifest.xml:13:9-45
+34        android:icon="@mipmap/ic_launcher"
+34-->C:\Users\sun\opencode\4j-iptv\app\src\main\AndroidManifest.xml:13:9-43
 35        android:label="@string/app_name"
 35-->C:\Users\sun\opencode\4j-iptv\app\src\main\AndroidManifest.xml:14:9-41
 36        android:supportsRtl="true"
