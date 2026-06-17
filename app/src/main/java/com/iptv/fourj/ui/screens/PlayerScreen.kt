@@ -2,59 +2,31 @@ package com.iptv.fourj.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
+import androidx.media3.ui.AspectRatioFrameLayout
 import com.iptv.fourj.ui.player.TvVideoPlayer
+import com.iptv.fourj.ui.player.resizeModeLabel
+import android.widget.Toast
+import androidx.compose.ui.platform.LocalContext
 
 @Composable
 fun PlayerScreen(streamUrl: String, title: String, navController: NavHostController) {
-    var showControls by remember { mutableStateOf(true) }
+    var resizeMode by remember { mutableIntStateOf(AspectRatioFrameLayout.RESIZE_MODE_FIT) }
+    val context = LocalContext.current
 
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
         TvVideoPlayer(
             streamUrl = streamUrl,
+            resizeMode = resizeMode,
             modifier = Modifier.fillMaxSize(),
-            onBack = { navController.popBackStack() }
-        )
-
-        if (showControls) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .align(Alignment.TopStart)
-                    .padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(
-                    onClick = { navController.popBackStack() },
-                    colors = IconButtonDefaults.iconButtonColors(
-                        containerColor = Color.Black.copy(alpha = 0.5f),
-                        contentColor = Color.White
-                    )
-                ) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                }
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold
-                )
+            onBack = { navController.popBackStack() },
+            onResizeModeChange = { next ->
+                resizeMode = next
+                Toast.makeText(context, "Aspect: ${resizeModeLabel(next)}", Toast.LENGTH_SHORT).show()
             }
-        }
-
-        LaunchedEffect(Unit) {
-            kotlinx.coroutines.delay(5000)
-            showControls = false
-        }
+        )
     }
 }

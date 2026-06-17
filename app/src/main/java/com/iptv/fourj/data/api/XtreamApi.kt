@@ -1,5 +1,6 @@
 package com.iptv.fourj.data.api
 
+import android.util.Log
 import com.iptv.fourj.data.model.*
 import io.ktor.client.*
 import io.ktor.client.call.*
@@ -28,6 +29,12 @@ class XtreamApi(private val provider: Provider) {
         }
     }
 
+    private val safeJson = Json {
+        ignoreUnknownKeys = true
+        isLenient = true
+        coerceInputValues = true
+    }
+
     private fun buildAuthUrl(action: String = "", extraParams: Map<String, String> = emptyMap()): String {
         val params = buildMap {
             put("username", provider.username)
@@ -38,69 +45,102 @@ class XtreamApi(private val provider: Provider) {
         return "$baseUrl/player_api.php?$params"
     }
 
+    private suspend inline fun <reified T> safeGet(url: String): T {
+        val response = client.get(url)
+        val status = response.status
+        val text = response.bodyAsText()
+        Log.d("XtreamApi", "GET $url => HTTP $status body=${text.take(500)}")
+        if (status.value == 404) {
+            throw Exception("Server returned 404 Not Found.\nThe server may not be reachable from this network, or the URL is incorrect.")
+        }
+        if (status.value != 200) {
+            throw Exception("Server returned HTTP ${status.value}: ${text.take(200)}")
+        }
+        if (text.isBlank()) {
+            throw Exception("Server returned empty response")
+        }
+        if (text.trimStart().startsWith("{") && text.contains("\"user_info\"")) {
+            val login = safeJson.decodeFromString<LoginResponse>(text)
+            if (login.userInfo.auth != 1) {
+                throw Exception("Auth failed: ${login.userInfo.message.ifBlank { "Server rejected credentials" }}")
+            }
+            throw Exception("Server returned auth response instead of expected data")
+        }
+        return safeJson.decodeFromString<T>(text)
+    }
+
     suspend fun login(): LoginResponse {
         val url = buildAuthUrl()
         val response = client.get(url)
+        val status = response.status
         val text = response.bodyAsText()
-        return Json { ignoreUnknownKeys = true; isLenient = true }.decodeFromString(text)
+        Log.d("XtreamApi", "LOGIN $url => HTTP $status body=${text.take(500)}")
+
+        if (status.value != 200) {
+            throw Exception("Server returned HTTP ${status.value}: ${text.take(200)}")
+        }
+        if (text.isBlank()) {
+            throw Exception("Server returned empty response")
+        }
+        return safeJson.decodeFromString(text)
     }
 
     suspend fun getLiveCategories(): List<LiveCategory> {
         val url = buildAuthUrl("get_live_categories")
-        return client.get(url).body()
+        return safeGet(url)
     }
 
     suspend fun getLiveStreams(categoryId: String? = null): List<LiveStream> {
         val extra = categoryId?.let { mapOf("category_id" to it) } ?: emptyMap()
         val url = buildAuthUrl("get_live_streams", extra)
-        return client.get(url).body()
+        return safeGet(url)
     }
 
     suspend fun getVodCategories(): List<VodCategory> {
         val url = buildAuthUrl("get_vod_categories")
-        return client.get(url).body()
+        return safeGet(url)
     }
 
     suspend fun getVodStreams(categoryId: String? = null): List<VodStream> {
         val extra = categoryId?.let { mapOf("category_id" to it) } ?: emptyMap()
         val url = buildAuthUrl("get_vod_streams", extra)
-        return client.get(url).body()
+        return safeGet(url)
     }
 
     suspend fun getSeriesCategories(): List<SeriesCategory> {
         val url = buildAuthUrl("get_series_categories")
-        return client.get(url).body()
+        return safeGet(url)
     }
 
     suspend fun getSeriesStreams(categoryId: String? = null): List<SeriesStream> {
         val extra = categoryId?.let { mapOf("category_id" to it) } ?: emptyMap()
         val url = buildAuthUrl("get_series", extra)
-        return client.get(url).body()
+        return safeGet(url)
     }
 
     suspend fun getSeriesInfo(seriesId: String): SeriesInfo {
         val url = buildAuthUrl("get_series_info", mapOf("series_id" to seriesId))
-        return client.get(url).body()
+        return safeGet(url)
     }
 
     suspend fun getShortEpg(streamId: String): List<EpgListing> {
         val url = buildAuthUrl("get_short_epg", mapOf("stream_id" to streamId))
-        return client.get(url).body()
+        return safeGet(url)
     }
 
     suspend fun searchLiveStreams(query: String): List<LiveStream> {
         val url = buildAuthUrl("get_live_streams", mapOf("search" to query))
-        return client.get(url).body()
+        return safeGet(url)
     }
 
     suspend fun searchVodStreams(query: String): List<VodStream> {
         val url = buildAuthUrl("get_vod_streams", mapOf("search" to query))
-        return client.get(url).body()
+        return safeGet(url)
     }
 
     suspend fun searchSeriesStreams(query: String): List<SeriesStream> {
         val url = buildAuthUrl("get_series", mapOf("search" to query))
-        return client.get(url).body()
+        return safeGet(url)
     }
 
     fun getLiveStreamUrl(streamId: String): String {

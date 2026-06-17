@@ -1,33 +1,20 @@
 package com.iptv.fourj.ui.screens
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
 import com.iptv.fourj.data.api.StreamType
-import com.iptv.fourj.data.model.Episode
 import com.iptv.fourj.data.model.SeriesCategory
 import com.iptv.fourj.data.model.SeriesInfo
 import com.iptv.fourj.data.model.SeriesStream
@@ -52,7 +39,7 @@ fun SeriesCategoriesScreen(navController: NavHostController, repository: IptvRep
             modifier = Modifier
                 .width(280.dp)
                 .fillMaxHeight()
-                .background(MaterialTheme.colorScheme.surface)
+                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.95f))
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
                 // Header
@@ -60,7 +47,7 @@ fun SeriesCategoriesScreen(navController: NavHostController, repository: IptvRep
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(56.dp)
-                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
+                        .background(MaterialTheme.colorScheme.background.copy(alpha = 0.65f)),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     IconButton(onClick = { navController.popBackStack() }) {
@@ -84,10 +71,7 @@ fun SeriesCategoriesScreen(navController: NavHostController, repository: IptvRep
                         Text("Error: $error", color = MaterialTheme.colorScheme.error, fontSize = 14.sp)
                     }
                 } else {
-                    LazyVerticalGrid(
-                        columns = GridCells.Fixed(1),
-                        modifier = Modifier.fillMaxSize()
-                    ) {
+                    LazyColumn(modifier = Modifier.fillMaxSize()) {
                         itemsIndexed(categories) { index, category ->
                             CategorySidebarItem(
                                 name = category.categoryName,
@@ -133,13 +117,13 @@ fun SeriesListScreen(navController: NavHostController, repository: IptvRepositor
             .onFailure { error = it.message; loading = false }
     }
 
-    Column(modifier = Modifier.fillMaxSize()) {
+    Column(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         // Header
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(56.dp)
-                .background(MaterialTheme.colorScheme.surface),
+                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)),
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = { navController.popBackStack() }) {
@@ -178,17 +162,17 @@ fun SeriesListScreen(navController: NavHostController, repository: IptvRepositor
                 Text("Error: $error", color = MaterialTheme.colorScheme.error, fontSize = 14.sp)
             }
         } else {
-            LazyVerticalGrid(
-                columns = GridCells.Adaptive(160.dp),
+            LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(12.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 itemsIndexed(series) { index, item ->
-                    SeriesGridItem(
+                    TvContentRow(
                         title = item.name,
+                        subtitle = item.genre,
+                        type = "SERIES",
                         onClick = { navController.navigate(Routes.seriesDetail(item.seriesId)) }
                     )
                 }
@@ -209,13 +193,13 @@ fun SeriesDetailScreen(navController: NavHostController, repository: IptvReposit
             .onFailure { error = it.message; loading = false }
     }
 
-    Row(modifier = Modifier.fillMaxSize()) {
+    Row(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         // Episode list
         Box(
             modifier = Modifier
                 .width(400.dp)
                 .fillMaxHeight()
-                .background(MaterialTheme.colorScheme.surface)
+                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.95f))
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
                 // Header
@@ -223,7 +207,7 @@ fun SeriesDetailScreen(navController: NavHostController, repository: IptvReposit
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(56.dp)
-                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
+                        .background(MaterialTheme.colorScheme.background.copy(alpha = 0.65f)),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     IconButton(onClick = { navController.popBackStack() }) {
@@ -259,9 +243,10 @@ fun SeriesDetailScreen(navController: NavHostController, repository: IptvReposit
                                 )
                             }
                             itemsIndexed(episodes) { _, episode ->
-                                EpisodeListItem(
-                                    episode = episode,
-                                    seasonNum = seasonNum,
+                                TvContentRow(
+                                    title = episode.title.ifBlank { "Episode ${episode.episodeNum}" },
+                                    subtitle = "S$seasonNum E${episode.episodeNum}",
+                                    type = "EP",
                                     onClick = {
                                         val ext = episode.containerExtension.ifBlank { "mp4" }
                                         val url = repository.getStreamUrl(StreamType.SERIES, episode.id, ext)
@@ -310,154 +295,6 @@ fun SeriesDetailScreen(navController: NavHostController, repository: IptvReposit
                     }
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun CategorySidebarItem(
-    name: String,
-    index: Int,
-    onClick: () -> Unit
-) {
-    var focused by remember { mutableStateOf(false) }
-    val focusRequester = remember { FocusRequester() }
-
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(44.dp)
-            .focusRequester(focusRequester)
-            .onFocusChanged { focused = it.hasFocus }
-            .background(
-                if (focused) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
-                else Color.Transparent
-            )
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.CenterStart
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "${index + 1}",
-                fontSize = 12.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.width(28.dp)
-            )
-            Text(
-                text = name,
-                fontSize = 14.sp,
-                color = if (focused) MaterialTheme.colorScheme.primary
-                else MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-    }
-}
-
-@Composable
-private fun SeriesGridItem(
-    title: String,
-    onClick: () -> Unit
-) {
-    var focused by remember { mutableStateOf(false) }
-    val focusRequester = remember { FocusRequester() }
-
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(180.dp)
-            .focusRequester(focusRequester)
-            .onFocusChanged { focused = it.hasFocus }
-            .background(
-                MaterialTheme.colorScheme.surfaceVariant,
-                shape = MaterialTheme.shapes.small
-            )
-            .border(
-                width = if (focused) 2.dp else 1.dp,
-                color = if (focused) MaterialTheme.colorScheme.primary
-                else MaterialTheme.colorScheme.outline,
-                shape = MaterialTheme.shapes.small
-            )
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Icon(
-                Icons.Default.Tv,
-                contentDescription = null,
-                tint = if (focused) MaterialTheme.colorScheme.primary
-                else MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(48.dp)
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = title,
-                fontSize = 13.sp,
-                fontWeight = if (focused) FontWeight.SemiBold else FontWeight.Normal,
-                color = if (focused) MaterialTheme.colorScheme.primary
-                else MaterialTheme.colorScheme.onSurface,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.padding(horizontal = 8.dp)
-            )
-        }
-    }
-}
-
-@Composable
-private fun EpisodeListItem(
-    episode: Episode,
-    seasonNum: String,
-    onClick: () -> Unit
-) {
-    var focused by remember { mutableStateOf(false) }
-    val focusRequester = remember { FocusRequester() }
-
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(44.dp)
-            .focusRequester(focusRequester)
-            .onFocusChanged { focused = it.hasFocus }
-            .background(
-                if (focused) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
-                else Color.Transparent
-            )
-            .border(
-                width = 1.dp,
-                color = if (focused) MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
-                else Color.Transparent
-            )
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.CenterStart
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "E${episode.episodeNum}",
-                fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.width(48.dp)
-            )
-            Text(
-                text = episode.title.ifBlank { "Episode ${episode.episodeNum}" },
-                fontSize = 14.sp,
-                color = if (focused) MaterialTheme.colorScheme.primary
-                else MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
         }
     }
 }

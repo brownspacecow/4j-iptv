@@ -4,21 +4,21 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- Base dark background -->
+    <!-- Deep navy-black base -->
     <path
-        android:fillColor="#0A0A18"
+        android:fillColor="#090A12"
         android:pathData="M0,0 h108 v108 h-108 z" />
 
-    <!-- Subtle lighter center area -->
+    <!-- Subtle radial lighter center -->
     <path
-        android:fillColor="#111125"
-        android:fillAlpha="0.6"
-        android:pathData="M0,30 Q54,20 108,30 L108,78 Q54,88 0,78 Z" />
+        android:fillColor="#0E0F1C"
+        android:fillAlpha="0.8"
+        android:pathData="M54,54 m-50,0 a50,50 0 1,1 100,0 a50,50 0 1,1 -100,0" />
 
-    <!-- Very subtle cyan tint at top -->
+    <!-- Very faint cyan wash at top -->
     <path
-        android:fillColor="#00B4D8"
-        android:fillAlpha="0.03"
-        android:pathData="M0,0 L108,0 L108,40 Q54,50 0,40 Z" />
+        android:fillColor="#00B8E6"
+        android:fillAlpha="0.02"
+        android:pathData="M0,0 L108,0 L108,60 Q54,70 0,60 Z" />
 
 </vector>

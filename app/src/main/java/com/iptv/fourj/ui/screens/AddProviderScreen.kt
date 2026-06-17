@@ -17,6 +17,7 @@ import androidx.navigation.NavHostController
 import com.iptv.fourj.data.db.ProviderStore
 import com.iptv.fourj.data.model.Provider
 import com.iptv.fourj.data.repository.IptvRepository
+import com.iptv.fourj.ui.navigation.Routes
 import kotlinx.coroutines.launch
 
 @Composable
@@ -126,24 +127,28 @@ fun AddProviderScreen(navController: NavHostController, providerStore: ProviderS
                             loading = true
                             error = null
                             success = false
-                            val provider = Provider(name = name, serverUrl = serverUrl.trimEnd('/'), username = username, password = password)
+                            val provider = Provider(
+                                name = name.trim(),
+                                serverUrl = serverUrl.trimEnd('/'),
+                                username = username,
+                                password = password
+                            )
                             try {
                                 val result = repository.login(provider)
                                 result.onSuccess {
                                     val saved = providerStore.addProvider(provider)
-                                    if (providerStore.getActiveProvider() == null) {
-                                        providerStore.setActiveProvider(saved.id)
-                                    }
-                                    success = true
+                                    providerStore.setActiveProvider(saved.id)
                                     loading = false
-                                    kotlinx.coroutines.delay(800)
-                                    navController.popBackStack()
+                                    navController.navigate(Routes.HOME) {
+                                        popUpTo(Routes.HOME) { inclusive = true }
+                                        launchSingleTop = true
+                                    }
                                 }.onFailure {
                                     error = "Login failed: ${it.message ?: "Unknown error"}"
                                     loading = false
                                 }
                             } catch (e: Exception) {
-                                error = "Connection error: ${e.message ?: "Check server URL and try again"}"
+                                error = "Login failed: ${e.message ?: "Unknown error"}"
                                 loading = false
                             }
                         }

@@ -6,5 +6,5 @@ import com.iptv.fourj.data.repository.IptvRepository
 
 class FourJApp : Application() {
     val providerStore by lazy { ProviderStore(this) }
-    val repository by lazy { IptvRepository(providerStore) }
+    val repository by lazy { IptvRepository(providerStore, this) }
 }

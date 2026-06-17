@@ -20,12 +20,10 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
-import com.iptv.fourj.data.model.LiveCategory
-import com.iptv.fourj.data.model.VodCategory
-import com.iptv.fourj.data.model.SeriesCategory
 import com.iptv.fourj.data.repository.IptvRepository
 import com.iptv.fourj.ui.navigation.Routes
 
@@ -35,21 +33,25 @@ fun HomeScreen(navController: NavHostController, repository: IptvRepository) {
     val tabs = listOf("Search", "Live TV", "Movies", "Series")
     val icons = listOf(Icons.Default.Search, Icons.Default.LiveTv, Icons.Default.Movie, Icons.Default.Tv)
 
+    LaunchedEffect(Unit) {
+        repository.preloadContentCache()
+    }
+
     Row(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         // Sidebar
         Box(
             modifier = Modifier
-                .width(220.dp)
+                .width(232.dp)
                 .fillMaxHeight()
-                .background(MaterialTheme.colorScheme.surface)
+                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.95f))
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
                 // Logo
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(80.dp)
-                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
+                        .height(88.dp)
+                        .background(MaterialTheme.colorScheme.background.copy(alpha = 0.65f)),
                     contentAlignment = Alignment.Center
                 ) {
                     Row {
@@ -103,7 +105,11 @@ fun HomeScreen(navController: NavHostController, repository: IptvRepository) {
         )
 
         // Content area
-        Box(modifier = Modifier.weight(1f)) {
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .background(MaterialTheme.colorScheme.background)
+        ) {
             when (selectedTab) {
                 0 -> SearchTabContent(navController, repository)
                 1 -> LiveTabContent(navController, repository)
@@ -124,16 +130,16 @@ private fun SidebarItem(
     var focused by remember { mutableStateOf(false) }
     val focusRequester = remember { FocusRequester() }
 
-    Box(
-        modifier = Modifier
+        Box(
+            modifier = Modifier
             .fillMaxWidth()
-            .height(56.dp)
+            .height(60.dp)
             .focusRequester(focusRequester)
             .onFocusChanged { focused = it.hasFocus }
             .background(
                 when {
-                    isSelected -> MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
-                    focused -> MaterialTheme.colorScheme.surfaceVariant
+                    isSelected -> MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
+                    focused -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f)
                     else -> Color.Transparent
                 }
             )
@@ -154,10 +160,10 @@ private fun SidebarItem(
                 },
                 modifier = Modifier.size(24.dp)
             )
-            Spacer(modifier = Modifier.width(16.dp))
+            Spacer(modifier = Modifier.width(14.dp))
             Text(
                 text = label,
-                fontSize = 15.sp,
+                fontSize = 14.sp,
                 fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
                 color = when {
                     isSelected -> MaterialTheme.colorScheme.primary
@@ -172,7 +178,7 @@ private fun SidebarItem(
             Box(
                 modifier = Modifier
                     .width(3.dp)
-                    .height(32.dp)
+                    .height(38.dp)
                     .align(Alignment.CenterStart)
                     .background(MaterialTheme.colorScheme.primary)
             )
@@ -182,70 +188,52 @@ private fun SidebarItem(
 
 @Composable
 private fun LiveTabContent(navController: NavHostController, repository: IptvRepository) {
-    var categories by remember { mutableStateOf<List<LiveCategory>>(emptyList()) }
-    var loading by remember { mutableStateOf(true) }
-    var error by remember { mutableStateOf<String?>(null) }
-
-    LaunchedEffect(Unit) {
-        runCatching { repository.getLiveCategories() }
-            .onSuccess { categories = it; loading = false }
-            .onFailure { error = it.message; loading = false }
-    }
-
-    when {
-        loading -> LoadingBox()
-        error != null -> ErrorBox(error!!)
-        categories.isEmpty() -> EmptyBox("No live categories")
-        else -> CategoryList(
-            categories = categories.map { it.categoryId to it.categoryName },
-            onClick = { id, name -> navController.navigate(Routes.liveCategory(id, name)) }
-        )
-    }
+    CategoryTabScreen(
+        loader = { repository.getLiveCategories().map { it.categoryId to it.categoryName } },
+        emptyMessage = "No live categories found.\nMake sure your provider credentials are valid and server is reachable.",
+        onClick = { id, name -> navController.navigate(Routes.liveCategory(id, name)) }
+    )
 }
 
 @Composable
 private fun MoviesTabContent(navController: NavHostController, repository: IptvRepository) {
-    var categories by remember { mutableStateOf<List<VodCategory>>(emptyList()) }
-    var loading by remember { mutableStateOf(true) }
-    var error by remember { mutableStateOf<String?>(null) }
-
-    LaunchedEffect(Unit) {
-        runCatching { repository.getVodCategories() }
-            .onSuccess { categories = it; loading = false }
-            .onFailure { error = it.message; loading = false }
-    }
-
-    when {
-        loading -> LoadingBox()
-        error != null -> ErrorBox(error!!)
-        categories.isEmpty() -> EmptyBox("No movie categories")
-        else -> CategoryList(
-            categories = categories.map { it.categoryId to it.categoryName },
-            onClick = { id, name -> navController.navigate(Routes.moviesCategory(id, name)) }
-        )
-    }
+    CategoryTabScreen(
+        loader = { repository.getVodCategories().map { it.categoryId to it.categoryName } },
+        emptyMessage = "No movie categories found.\nMake sure your provider credentials are valid and server is reachable.",
+        onClick = { id, name -> navController.navigate(Routes.moviesCategory(id, name)) }
+    )
 }
 
 @Composable
 private fun SeriesTabContent(navController: NavHostController, repository: IptvRepository) {
-    var categories by remember { mutableStateOf<List<SeriesCategory>>(emptyList()) }
+    CategoryTabScreen(
+        loader = { repository.getSeriesCategories().map { it.categoryId to it.categoryName } },
+        emptyMessage = "No series categories found.\nMake sure your provider credentials are valid and server is reachable.",
+        onClick = { id, name -> navController.navigate(Routes.seriesCategory(id, name)) }
+    )
+}
+
+@Composable
+private fun CategoryTabScreen(
+    loader: suspend () -> List<Pair<String, String>>,
+    emptyMessage: String,
+    onClick: (String, String) -> Unit
+) {
+    var categories by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
-        runCatching { repository.getSeriesCategories() }
+        runCatching { loader() }
             .onSuccess { categories = it; loading = false }
-            .onFailure { error = it.message; loading = false }
+            .onFailure { error = it.message ?: it.toString(); loading = false }
     }
 
     when {
         loading -> LoadingBox()
         error != null -> ErrorBox(error!!)
-        categories.isEmpty() -> EmptyBox("No series categories")
-        else -> CategoryList(
-            categories = categories.map { it.categoryId to it.categoryName },
-            onClick = { id, name -> navController.navigate(Routes.seriesCategory(id, name)) }
-        )
+        categories.isEmpty() -> EmptyBox(emptyMessage)
+        else -> CategoryList(categories = categories, onClick = onClick)
     }
 }
 
@@ -257,7 +245,7 @@ private fun CategoryList(
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .padding(16.dp),
+            .padding(horizontal = 16.dp, vertical = 14.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         item {
@@ -266,7 +254,7 @@ private fun CategoryList(
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(bottom = 8.dp)
+                modifier = Modifier.padding(bottom = 10.dp)
             )
         }
         itemsIndexed(categories) { index, (id, name) ->
@@ -291,17 +279,17 @@ private fun CategoryListItem(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(48.dp)
+            .height(54.dp)
             .focusRequester(focusRequester)
             .onFocusChanged { focused = it.hasFocus }
             .background(
-                if (focused) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
-                else MaterialTheme.colorScheme.surface
+                if (focused) MaterialTheme.colorScheme.primary.copy(alpha = 0.17f)
+                else MaterialTheme.colorScheme.surface.copy(alpha = 0.72f)
             )
             .border(
-                width = 1.dp,
-                color = if (focused) MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
-                else Color.Transparent
+                width = if (focused) 2.dp else 1.dp,
+                color = if (focused) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)
             )
             .clickable(onClick = onClick),
         contentAlignment = Alignment.CenterStart
@@ -312,13 +300,13 @@ private fun CategoryListItem(
         ) {
             Text(
                 text = "${index + 1}",
-                fontSize = 13.sp,
+                fontSize = 11.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.width(32.dp)
+                modifier = Modifier.width(30.dp)
             )
             Text(
                 text = name,
-                fontSize = 15.sp,
+                fontSize = 14.sp,
                 color = if (focused) MaterialTheme.colorScheme.primary
                 else MaterialTheme.colorScheme.onSurface,
                 maxLines = 1
@@ -336,7 +324,7 @@ private fun LoadingBox() {
 
 @Composable
 private fun ErrorBox(message: String) {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+    Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Icon(
                 Icons.Default.ErrorOutline,
@@ -345,14 +333,31 @@ private fun ErrorBox(message: String) {
                 modifier = Modifier.size(48.dp)
             )
             Spacer(modifier = Modifier.height(8.dp))
-            Text("Error: $message", color = MaterialTheme.colorScheme.error)
+            Text(
+                message,
+                color = MaterialTheme.colorScheme.error,
+                fontSize = 14.sp,
+                textAlign = TextAlign.Center
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            Text(
+                "Check your provider settings or try re-adding your provider.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 12.sp,
+                textAlign = TextAlign.Center
+            )
         }
     }
 }
 
 @Composable
 private fun EmptyBox(message: String) {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Text(message, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 16.sp)
+    Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
+        Text(
+            message,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 15.sp,
+            textAlign = TextAlign.Center
+        )
     }
 }
