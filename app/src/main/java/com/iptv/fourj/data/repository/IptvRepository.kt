@@ -6,10 +6,11 @@ import com.iptv.fourj.data.api.StreamType
 import com.iptv.fourj.data.api.XtreamApi
 import com.iptv.fourj.data.db.ProviderStore
 import com.iptv.fourj.data.model.*
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -18,7 +19,10 @@ import java.io.File
 
 data class CacheLoadState(
     val isLoading: Boolean = false,
-    val message: String = ""
+    val message: String = "",
+    val liveLoaded: Boolean = false,
+    val vodLoaded: Boolean = false,
+    val seriesLoaded: Boolean = false,
 )
 
 @Serializable
@@ -112,27 +116,46 @@ class IptvRepository(
         }
         try {
             if (restoreCacheFromDisk()) {
-                _cacheLoadState.value = CacheLoadState(false, "Ready")
+                _cacheLoadState.value = CacheLoadState(false, "Ready", liveLoaded = true, vodLoaded = true, seriesLoaded = true)
                 return
             }
             val api = getApi()
-            _cacheLoadState.value = CacheLoadState(true, "Loading live channels...")
-            cachedLiveStreams = cachedLiveStreams ?: api.getLiveStreams(null).also {
-                Log.d("IptvRepo", "preloaded ${it.size} live streams")
+            _cacheLoadState.value = CacheLoadState(isLoading = true, message = "Loading content...")
+
+            withContext(Dispatchers.IO) {
+                coroutineScope {
+                    launch {
+                        api.getLiveStreams(null).also {
+                            cachedLiveStreams = it
+                            _cacheLoadState.value = _cacheLoadState.value.copy(liveLoaded = true, message = "Loading movies...")
+                            Log.d("IptvRepo", "preloaded ${it.size} live streams")
+                        }
+                    }
+                    launch {
+                        api.getVodStreams(null).also {
+                            cachedVodStreams = it
+                            _cacheLoadState.value = _cacheLoadState.value.copy(vodLoaded = true, message = "Loading series...")
+                            Log.d("IptvRepo", "preloaded ${it.size} vod streams")
+                        }
+                    }
+                    launch {
+                        api.getSeriesStreams(null).also {
+                            cachedSeriesStreams = it
+                            _cacheLoadState.value = _cacheLoadState.value.copy(seriesLoaded = true, message = "Ready")
+                            Log.d("IptvRepo", "preloaded ${it.size} series streams")
+                        }
+                    }
+                }
             }
-            _cacheLoadState.value = CacheLoadState(true, "Loading movies...")
-            cachedVodStreams = cachedVodStreams ?: api.getVodStreams(null).also {
-                Log.d("IptvRepo", "preloaded ${it.size} vod streams")
-            }
-            _cacheLoadState.value = CacheLoadState(true, "Loading series...")
-            cachedSeriesStreams = cachedSeriesStreams ?: api.getSeriesStreams(null).also {
-                Log.d("IptvRepo", "preloaded ${it.size} series streams")
-            }
+
+            _cacheLoadState.value = CacheLoadState(isLoading = false, message = "Ready", liveLoaded = true, vodLoaded = true, seriesLoaded = true)
             persistCacheToDisk()
-            _cacheLoadState.value = CacheLoadState(false, "Ready")
         } catch (e: Exception) {
             Log.w("IptvRepo", "preloadContentCache failed", e)
-            _cacheLoadState.value = CacheLoadState(false, e.message ?: "Cache failed")
+            _cacheLoadState.value = CacheLoadState(false, e.message ?: "Cache failed",
+                liveLoaded = cachedLiveStreams != null,
+                vodLoaded = cachedVodStreams != null,
+                seriesLoaded = cachedSeriesStreams != null)
         }
     }
 
@@ -151,7 +174,7 @@ class IptvRepository(
         cachedLiveStreams = null
         cachedVodStreams = null
         cachedSeriesStreams = null
-        _cacheLoadState.value = CacheLoadState()
+        _cacheLoadState.value = CacheLoadState(isLoading = false, message = "", liveLoaded = false, vodLoaded = false, seriesLoaded = false)
     }
 
     private fun cacheFile(providerId: Long): File = File(cacheDir, "provider_$providerId.json")
@@ -169,7 +192,7 @@ class IptvRepository(
             cachedVodStreams = snapshot.vodStreams
             cachedSeriesStreams = snapshot.seriesStreams
             cachedProviderId = provider.id
-            _cacheLoadState.value = CacheLoadState(false, "Ready")
+            _cacheLoadState.value = CacheLoadState(false, "Ready", liveLoaded = true, vodLoaded = true, seriesLoaded = true)
             Log.d("IptvRepo", "Restored cache from disk for provider ${provider.id}")
             true
         }.getOrElse {

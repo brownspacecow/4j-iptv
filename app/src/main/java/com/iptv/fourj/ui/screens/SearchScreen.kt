@@ -42,16 +42,16 @@ fun SearchTabContent(navController: NavHostController, repository: IptvRepositor
 
     val searchFocus = remember { FocusRequester() }
     val cacheLoadState by repository.cacheLoadState.collectAsStateWithLifecycle()
-    val cacheReady = !cacheLoadState.isLoading && repository.isCacheLoaded()
 
     LaunchedEffect(Unit) { searchFocus.requestFocus() }
 
-    LaunchedEffect(query, cacheLoadState.isLoading, cacheLoadState.message) {
-        if (cacheReady) {
-            liveResults = repository.searchLive(query)
-            vodResults = repository.searchVod(query)
-            seriesResults = repository.searchSeries(query)
-        }
+    LaunchedEffect(query, cacheLoadState.liveLoaded, cacheLoadState.vodLoaded, cacheLoadState.seriesLoaded) {
+        if (cacheLoadState.liveLoaded) liveResults = repository.searchLive(query)
+        else liveResults = emptyList()
+        if (cacheLoadState.vodLoaded) vodResults = repository.searchVod(query)
+        else vodResults = emptyList()
+        if (cacheLoadState.seriesLoaded) seriesResults = repository.searchSeries(query)
+        else seriesResults = emptyList()
     }
 
     Column(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
@@ -114,19 +114,7 @@ fun SearchTabContent(navController: NavHostController, repository: IptvRepositor
 
         Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(MaterialTheme.colorScheme.outline))
 
-        if (!cacheReady) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text(
-                        text = cacheLoadState.message.ifBlank { "Building search cache..." },
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 15.sp
-                    )
-                }
-            }
-        } else if (query.isBlank()) {
+        if (query.isBlank()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(
@@ -143,11 +131,36 @@ fun SearchTabContent(navController: NavHostController, repository: IptvRepositor
                     )
                 }
             }
+        } else if (!cacheLoadState.liveLoaded && !cacheLoadState.vodLoaded && !cacheLoadState.seriesLoaded) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = cacheLoadState.message.ifBlank { "Building search cache..." },
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 15.sp
+                    )
+                }
+            }
         } else {
+            val allLoaded = cacheLoadState.liveLoaded && cacheLoadState.vodLoaded && cacheLoadState.seriesLoaded
             val allEmpty = liveResults.isEmpty() && vodResults.isEmpty() && seriesResults.isEmpty()
-            if (allEmpty) {
+            if (allEmpty && allLoaded) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text("No results found", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 15.sp)
+                }
+            } else if (allEmpty && !allLoaded) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            text = cacheLoadState.message.ifBlank { "Loading..." },
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 15.sp
+                        )
+                    }
                 }
             } else {
                 LazyVerticalGrid(
