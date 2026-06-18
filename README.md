@@ -1,6 +1,6 @@
 # 4J-IPTV
 
-A Tivimate-style IPTV player for Android Google TV with Xtream Codes API support.
+A simple IPTV player for Android Google TV with Xtream Codes API support.
 
 ## Features
 
