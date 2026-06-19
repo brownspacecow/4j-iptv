@@ -1,9 +1,17 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
     id("org.jetbrains.kotlin.plugin.serialization")
 }
+
+val versionProps = Properties().apply {
+    load(file("../version.properties").inputStream())
+}
+val verCode = versionProps.getProperty("versionCode").toInt()
+val verName = versionProps.getProperty("versionName")
 
 android {
     namespace = "com.iptv.fourj"
@@ -13,8 +21,41 @@ android {
         applicationId = "com.iptv.fourj"
         minSdk = 23
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = verCode
+        versionName = verName
+    }
+
+    signingConfigs {
+        val envStore = System.getenv("KEYSTORE_PATH")
+        val envPass = System.getenv("KEYSTORE_PASSWORD")
+        val envAlias = System.getenv("KEY_ALIAS")
+        val envKeyPass = System.getenv("KEY_PASSWORD")
+
+        if (envStore != null && envPass != null && envAlias != null && envKeyPass != null) {
+            create("release") {
+                storeFile = file(envStore)
+                storePassword = envPass
+                keyAlias = envAlias
+                keyPassword = envKeyPass
+            }
+        } else {
+            val propsFile = rootProject.file("keystore.properties")
+            if (propsFile.exists()) {
+                val props = Properties().apply { load(propsFile.inputStream()) }
+                val sf = props.getProperty("storeFile")
+                val sp = props.getProperty("storePassword")
+                val ka = props.getProperty("keyAlias")
+                val kp = props.getProperty("keyPassword")
+                if (sf != null && sp != null && ka != null && kp != null) {
+                    create("release") {
+                        storeFile = rootProject.file(sf)
+                        storePassword = sp
+                        keyAlias = ka
+                        keyPassword = kp
+                    }
+                }
+            }
+        }
     }
 
     buildTypes {
@@ -22,6 +63,7 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = signingConfigs.findByName("release")
         }
     }
 
@@ -36,6 +78,10 @@ android {
 
     buildFeatures {
         compose = true
+    }
+
+    lint {
+        disable += "NullSafeMutableLiveData"
     }
 }
 
