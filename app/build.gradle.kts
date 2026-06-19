@@ -33,7 +33,7 @@ android {
 
         if (envStore != null && envPass != null && envAlias != null && envKeyPass != null) {
             create("release") {
-                storeFile = file(envStore)
+                storeFile = rootProject.file(envStore)
                 storePassword = envPass
                 keyAlias = envAlias
                 keyPassword = envKeyPass
