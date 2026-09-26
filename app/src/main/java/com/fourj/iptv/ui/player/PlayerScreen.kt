@@ -27,6 +27,8 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.media3.common.AudioAttributes
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -74,7 +76,7 @@ fun PlayerScreen(
     }
 
     val player = remember {
-        ExoPlayer.Builder(context)
+        ExoPlayer.Builder(context, audioRenderersFactory(context))
             .setMediaSourceFactory(
                 DefaultMediaSourceFactory(
                     // Panel-issued headers matter: without the User-Agent/Referer a channel
@@ -88,6 +90,16 @@ fun PlayerScreen(
             .apply {
                 // Providers buffer aggressively; a longer buffer hides the stalls that would
                 // otherwise show as a freeze every few seconds.
+                setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(C.USAGE_MEDIA)
+                        .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
+                        .build(),
+                    // Without this ExoPlayer does not participate in audio focus at all, which
+                    // on a television means the app can talk over a system sound or another
+                    // player instead of ducking for it.
+                    /* handleAudioFocus = */ true,
+                )
                 setMediaItem(MediaItem.fromUri(streamUrl))
                 playWhenReady = true
                 prepare()
@@ -107,10 +119,15 @@ fun PlayerScreen(
         }
     }
 
-    // Re-prepare when the URL or the channel changes, but keep the same player instance so
-    // hardware decoders and the buffer are not torn down on every zap.
+    // Channel change. Tearing the old source down first is not belt-and-braces: calling
+    // setMediaItem() on a still-playing live MPEG-TS stream leaves the previous source feeding
+    // the audio decoder, which is heard as the old channel still audible - often looping -
+    // underneath the new one. stop() releases the decoder and the AudioTrack; clearMediaItems()
+    // drops the buffered segments that would otherwise be replayed.
     LaunchedEffect(streamUrl) {
         errorText = null
+        player.stop()
+        player.clearMediaItems()
         player.setMediaItem(MediaItem.fromUri(streamUrl))
         player.prepare()
         player.playWhenReady = true
