@@ -62,6 +62,10 @@ interface LiveCategoryDao {
     @Query("SELECT * FROM live_categories ORDER BY sortOrder ASC")
     fun observeAll(): Flow<List<LiveCategoryEntity>>
 
+    /** One-shot read of the same list, for callers that need a value rather than a subscription. */
+    @Query("SELECT * FROM live_categories ORDER BY sortOrder ASC")
+    suspend fun observeAllOnce(): List<LiveCategoryEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertAll(categories: List<LiveCategoryEntity>)
 

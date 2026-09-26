@@ -12,6 +12,16 @@ interface VodDao {
     @Query("SELECT * FROM vod_categories WHERE kind = :kind ORDER BY sortOrder ASC")
     fun observeVodCategories(kind: String): Flow<List<VodCategoryEntity>>
 
+    /** One-shot reads, for the search indexer which needs values rather than subscriptions. */
+    @Query("SELECT * FROM vod_categories WHERE kind = :kind ORDER BY sortOrder ASC")
+    suspend fun vodCategoriesOnce(kind: String): List<VodCategoryEntity>
+
+    @Query("SELECT * FROM movies ORDER BY sortOrder ASC")
+    suspend fun allMoviesOnce(): List<MovieEntity>
+
+    @Query("SELECT * FROM series ORDER BY sortOrder ASC")
+    suspend fun allSeriesOnce(): List<SeriesEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertVodCategories(rows: List<VodCategoryEntity>)
 

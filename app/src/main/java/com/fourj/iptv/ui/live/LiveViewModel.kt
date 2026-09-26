@@ -1,5 +1,6 @@
 package com.fourj.iptv.ui.live
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
@@ -7,6 +8,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.fourj.iptv.data.remote.toUserMessage
 import com.fourj.iptv.data.repository.EpgRepository
 import com.fourj.iptv.data.repository.LiveRepository
+import com.fourj.iptv.data.repository.SearchRepository
 import com.fourj.iptv.di.AppContainer
 import com.fourj.iptv.domain.model.EpgListing
 import com.fourj.iptv.domain.model.LiveCategory
@@ -55,6 +57,7 @@ private data class ChannelLoad(
 class LiveViewModel(
     private val repository: LiveRepository,
     private val epgRepository: EpgRepository,
+    private val searchRepository: SearchRepository,
     val profile: ProviderProfile,
 ) : ViewModel() {
 
@@ -117,6 +120,24 @@ class LiveViewModel(
 
     private fun nowSeconds() = System.currentTimeMillis() / 1000
 
+    /**
+     * Add a freshly loaded shelf to the search index.
+     *
+     * Best-effort: a failure here must not disturb playback or browsing, so it is swallowed after
+     * being logged. The index is a convenience, and letting it break the thing the viewer was
+     * actually doing would be a bad trade.
+     */
+    private fun indexChannelsForSearch(channels: List<LiveChannel>) {
+        if (channels.isEmpty()) return
+        val categoryName = _state.value.categories
+            .firstOrNull { it.id == _state.value.selectedCategoryId }
+            ?.name
+        viewModelScope.launch {
+            runCatching { searchRepository.indexChannels(channels, categoryName) }
+                .onFailure { Log.w(TAG, "could not index channels for search", it) }
+        }
+    }
+
     private fun loadCategories() {
         viewModelScope.launch {
             repository.refreshCategories()
@@ -169,6 +190,10 @@ class LiveViewModel(
                 .collect { load ->
                     _state.update { it.copy(channels = load.channels, isLoadingChannels = load.loading) }
                     requestGuideForVisibleChannels()
+                    // Feed the search index as channels arrive. Free coverage: these rows have just
+                    // been downloaded anyway, so indexing them costs one write and makes the shelf
+                    // searchable without the viewer ever asking for it.
+                    indexChannelsForSearch(load.channels)
                 }
         }
     }
@@ -187,6 +212,29 @@ class LiveViewModel(
 
     fun onPlaybackFinished() = _state.update { it.copy(playing = null) }
 
+    /**
+     * Look up a channel by id, for search results.
+     *
+     * Returns null when the channel is not in the local cache. A search hit can name a channel the
+     * app has indexed but not cached in full - the index holds only names and ids - so the caller
+     * has to handle a miss rather than assume the hit is playable.
+     */
+    suspend fun findChannel(streamId: Int): LiveChannel? = repository.findChannel(streamId)
+
+    /**
+     * Make sure a channel's category is on screen before playing it.
+     *
+     * Search can surface a channel from a shelf the viewer has never opened, and the player is
+     * driven by whatever the browse screen currently has loaded. Without this, picking a search
+     * result from an unopened category would start playback for a channel the grid knows nothing
+     * about - and "now playing" would be the only evidence it had ever been found.
+     */
+    suspend fun revealChannel(channel: LiveChannel) {
+        val categoryId = channel.categoryId ?: return
+        repository.ensureCategoryLoaded(categoryId)
+        _state.update { it.copy(selectedCategoryId = categoryId) }
+    }
+
     /** Signed URL for a channel, including the headers the panel requires. */
     fun streamUrl(channel: LiveChannel): String = repository.streamUrl(channel)
 
@@ -204,12 +252,14 @@ class LiveViewModel(
 
     companion object {
         private const val CLOCK_TICK_MS = 30_000L
+        private const val TAG = "4J"
 
         fun factory(container: AppContainer, profile: ProviderProfile) = viewModelFactory {
             initializer {
                 LiveViewModel(
                     repository = container.liveRepository(profile),
                     epgRepository = container.epgRepository(profile),
+                    searchRepository = container.searchRepository(profile),
                     profile = profile,
                 )
             }

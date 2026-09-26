@@ -115,6 +115,34 @@ class VodRepository(
             .map { rows -> rows.map { it.toModel() } }
             .flowOn(ioDispatcher)
 
+    /**
+     * Every cached category, films and series together, in one list.
+     *
+     * The search indexer needs the whole set at once to decide how much work "index everything" is.
+     * [kind] is dropped deliberately: the two kinds share the id space, and the caller tags each
+     * entry with the kind it came from, so a collision here would be caught rather than silently
+     * dropping one of the two.
+     */
+    suspend fun cachedVodCategories(): List<VodCategory> = withContext(ioDispatcher) {
+        runCatching {
+            val films = database.vodDao().vodCategoriesOnce(ContentKind.MOVIE.name)
+            val shows = database.vodDao().vodCategoriesOnce(ContentKind.SERIES.name)
+            (films + shows).map { VodCategory(it.categoryId, it.categoryName) }
+        }.getOrDefault(emptyList())
+    }
+
+    /** Every film fetched so far, for indexing shelves the viewer has already browsed. */
+    suspend fun cachedMovies(): List<Movie> = withContext(ioDispatcher) {
+        runCatching { database.vodDao().allMoviesOnce().map { it.toModel() } }
+            .getOrDefault(emptyList())
+    }
+
+    /** Every series fetched so far, for indexing shelves the viewer has already browsed. */
+    suspend fun cachedSeries(): List<Series> = withContext(ioDispatcher) {
+        runCatching { database.vodDao().allSeriesOnce().map { it.toModel() } }
+            .getOrDefault(emptyList())
+    }
+
     suspend fun findMovie(movieId: Int): Movie? = withContext(ioDispatcher) {
         database.vodDao().findMovie(movieId)?.toModel()
     }

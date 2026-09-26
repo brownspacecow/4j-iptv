@@ -18,6 +18,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.key.Key
@@ -64,6 +66,14 @@ fun TvTextField(
     keyboardActions: KeyboardActions = KeyboardActions.Default,
     enabled: Boolean = true,
     movesFocusRightAtEnd: Boolean = false,
+    /**
+     * Optional handle on the field, so a screen can put the caret in it on arrival.
+     *
+     * A search box that opens without focus is a search box you have to arrow into first, and on a
+     * television that is the difference between typing straight away and pressing down and finding
+     * out whether the screen works at all.
+     */
+    focusRequester: FocusRequester? = null,
 ) {
     val focusManager = LocalFocusManager.current
     var focused by remember { mutableStateOf(false) }
@@ -129,6 +139,9 @@ fun TvTextField(
                 },
                 modifier = Modifier
                     .fillMaxWidth()
+                    .then(
+                        focusRequester?.let { Modifier.focusRequester(it) } ?: Modifier,
+                    )
                     .onFocusChanged { focused = it.isFocused },
                 enabled = enabled,
                 singleLine = singleLine,

@@ -1,8 +1,10 @@
 package com.fourj.iptv.ui.vod
 
 import androidx.room.Room
+import com.fourj.iptv.data.local.SearchIndexDatabase
 import com.fourj.iptv.data.local.VodDatabase
 import com.fourj.iptv.data.remote.XtreamNetwork
+import com.fourj.iptv.data.repository.SearchRepository
 import com.fourj.iptv.data.repository.VodRepository
 import com.fourj.iptv.domain.model.ProviderProfile
 import kotlinx.coroutines.Dispatchers
@@ -44,7 +46,9 @@ class VodViewModelTest {
 
     private lateinit var server: MockWebServer
     private lateinit var database: VodDatabase
+    private lateinit var searchDatabase: SearchIndexDatabase
     private lateinit var repository: VodRepository
+    private lateinit var searchRepository: SearchRepository
     private lateinit var profile: ProviderProfile
 
     @Before
@@ -61,6 +65,14 @@ class VodViewModelTest {
             VodDatabase::class.java,
         ).allowMainThreadQueries().build()
 
+        // The search index gets its own in-memory database, as it does in the app. It is a separate
+        // file there because it holds nothing but derived names and is safe to discard, and the
+        // tests keep that separation so a change to either schema cannot quietly alter the other.
+        searchDatabase = Room.inMemoryDatabaseBuilder(
+            RuntimeEnvironment.getApplication(),
+            SearchIndexDatabase::class.java,
+        ).allowMainThreadQueries().build()
+
         profile = ProviderProfile(
             baseUrl = server.url("/").toString().trimEnd('/'),
             username = "alice",
@@ -72,11 +84,19 @@ class VodViewModelTest {
             ioDispatcher = Dispatchers.IO,
             api = XtreamNetwork.createVodApi(profile),
         )
+        searchRepository = SearchRepository(
+            profile = profile,
+            database = searchDatabase,
+            liveApi = XtreamNetwork.createApi(profile, debugLogging = false),
+            vodApi = XtreamNetwork.createVodApi(profile),
+            ioDispatcher = Dispatchers.IO,
+        )
     }
 
     @After
     fun tearDown() {
         database.close()
+        searchDatabase.close()
         server.shutdown()
         Dispatchers.resetMain()
     }
@@ -137,7 +157,7 @@ class VodViewModelTest {
         // empty queue, which would make the loop look like a hang rather than a loop.
         enqueueFilms(count = 40)
 
-        val viewModel = VodViewModel(repository, profile)
+        val viewModel = VodViewModel(repository, searchRepository, profile)
         viewModel.state.await(
             describe = { "movies=${it.movies.map { m -> m.name }} categories=${it.categories.map { c -> c.id }}" },
             condition = { it.movies.isNotEmpty() },
@@ -154,7 +174,7 @@ class VodViewModelTest {
         enqueueCategories()
         enqueueFilms()
 
-        val viewModel = VodViewModel(repository, profile)
+        val viewModel = VodViewModel(repository, searchRepository, profile)
         val state = viewModel.state.await(
             describe = { "selected=${it.selectedCategoryId} categories=${it.categories.map { c -> c.id }}" },
             condition = { it.selectedCategoryId != null && it.movies.isNotEmpty() },
@@ -171,7 +191,7 @@ class VodViewModelTest {
         enqueueFilms()
         enqueue("""[{"num":1,"name":"A Show","series_id":3001,"category_id":"20"}]""")
 
-        val viewModel = VodViewModel(repository, profile)
+        val viewModel = VodViewModel(repository, searchRepository, profile)
         viewModel.state.await(
             describe = { "movies=${it.movies.size}" },
             condition = { it.movies.isNotEmpty() },
@@ -194,7 +214,7 @@ class VodViewModelTest {
         enqueueCategories()
         enqueue("[]")
 
-        val viewModel = VodViewModel(repository, profile)
+        val viewModel = VodViewModel(repository, searchRepository, profile)
         val state = viewModel.state.await(
             describe = { "selected=${it.selectedCategoryId} loading=${it.isLoadingItems}" },
             condition = { it.selectedCategoryId != null && !it.isLoadingItems },
@@ -209,7 +229,7 @@ class VodViewModelTest {
         enqueueCategories()
         enqueue("""[{"num":1,"name":"No Ext","stream_id":5,"category_id":"10"}]""")
 
-        val viewModel = VodViewModel(repository, profile)
+        val viewModel = VodViewModel(repository, searchRepository, profile)
         val state = viewModel.state.await(
             describe = { "movies=${it.movies.map { m -> m.name }}" },
             condition = { it.movies.isNotEmpty() },
@@ -224,7 +244,7 @@ class VodViewModelTest {
         enqueueCategories()
         enqueueFilms()
 
-        val viewModel = VodViewModel(repository, profile)
+        val viewModel = VodViewModel(repository, searchRepository, profile)
         viewModel.state.await(
             describe = { "movies=${it.movies.size}" },
             condition = { it.movies.isNotEmpty() },

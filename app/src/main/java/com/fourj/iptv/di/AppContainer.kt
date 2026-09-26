@@ -5,12 +5,14 @@ import androidx.room.Room
 import com.fourj.iptv.data.local.CredentialStore
 import com.fourj.iptv.data.local.FourJDatabase
 import com.fourj.iptv.data.local.MIGRATION_1_2
+import com.fourj.iptv.data.local.SearchIndexDatabase
 import com.fourj.iptv.data.local.VOD_MIGRATION_1_2
 import com.fourj.iptv.data.local.VOD_MIGRATION_2_3
 import com.fourj.iptv.data.local.VodDatabase
 import com.fourj.iptv.data.remote.XtreamNetwork
 import com.fourj.iptv.data.repository.EpgRepository
 import com.fourj.iptv.data.repository.LiveRepository
+import com.fourj.iptv.data.repository.SearchRepository
 import com.fourj.iptv.data.repository.VodRepository
 import com.fourj.iptv.domain.model.ProviderProfile
 import okhttp3.OkHttpClient
@@ -74,6 +76,27 @@ class AppContainer(context: Context) {
         api = XtreamNetwork.createVodApi(profile),
     )
 
+    /**
+     * The search index, in a third database file.
+     *
+     * Separate again from the other two, and this one is genuinely disposable: it holds nothing but
+     * copies of names the provider already supplied, so it can be deleted and rebuilt whenever the
+     * schema changes instead of carrying a migration. That is the whole reason it is not simply
+     * another table in the VOD database, where a schema change would have to be migrated around the
+     * viewer's favourites and playback progress.
+     */
+    private val searchDatabase: SearchIndexDatabase by lazy {
+        Room.databaseBuilder(appContext, SearchIndexDatabase::class.java, SEARCH_DATABASE_NAME)
+            .build()
+    }
+
+    fun searchRepository(profile: ProviderProfile): SearchRepository = SearchRepository(
+        profile = profile,
+        database = searchDatabase,
+        liveApi = apiFor(profile),
+        vodApi = XtreamNetwork.createVodApi(profile),
+    )
+
     private companion object {
         const val DATABASE_NAME = "fourj.db"
 
@@ -84,5 +107,8 @@ class AppContainer(context: Context) {
          * apart means a schema change to one never forces a migration on the other.
          */
         const val VOD_DATABASE_NAME = "fourj-vod.db"
+
+        /** Derived, rebuildable, holds no viewer data. See [searchDatabase]. */
+        const val SEARCH_DATABASE_NAME = "fourj-search.db"
     }
 }

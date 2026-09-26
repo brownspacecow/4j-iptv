@@ -2,7 +2,7 @@
 
 A free IPTV player for **Google TV**, Android TV and Fire TV, built around the Xtream Codes API.
 
-Live TV with a programme guide, plus films and series with resume.
+Live TV with a programme guide, plus films and series with resume, and search across all three.
 
 ---
 
@@ -10,9 +10,9 @@ Live TV with a programme guide, plus films and series with resume.
 
 | | |
 |---|---|
-| Features | Live TV, EPG, films, series, continue watching, favourites |
+| Features | Live TV, EPG, films, series, search, continue watching, favourites |
 | Builds | `assembleFullDebug`, `assembleLiteDebug` |
-| Tests | 95 unit tests, all passing |
+| Tests | 141 unit tests, all passing |
 | Verified on hardware | **No** — see [Honest limitations](#honest-limitations) |
 
 ## What works
@@ -36,6 +36,18 @@ Live TV with a programme guide, plus films and series with resume.
   so a crash or a power cut costs seconds rather than the film. "Continue watching" picks up where
   you left off.
 - **Favourites**, kept per account and per content type.
+
+**Search**
+
+- **One search box for live TV, films and series**, reachable from every tab, with results grouped by
+  type. Typing filters as you go — debounced, so a burst of keypresses gives one settled answer
+  rather than a list thrashing under you.
+- **Ranking by how well the title matches.** A title starting with what you typed comes first, then
+  one containing the word, then the rest.
+- **Instant and offline.** Search is a local query, so it never waits on a provider and works with
+  the television off.
+- **Coverage is shown, not assumed.** This is a real limit rather than a rounding error — see
+  [Search, and why it is local](#search-and-why-it-is-local).
 
 **Throughout**
 
@@ -75,7 +87,7 @@ sdk.dir=/path/to/Android/sdk
 Then:
 
 ```bash
-./gradlew :app:testFullDebugUnitTest     # 114 unit tests
+./gradlew :app:testFullDebugUnitTest     # 141 unit tests
 ./gradlew :app:assembleFullDebug         # APK with software audio + video fallback (~43 MB debug)
 ./gradlew :app:assembleLiteDebug         # smaller APK, no software decoders
 ```
@@ -120,6 +132,49 @@ not help in that case, because the hardware renderer has already claimed the tra
 
 This is why the project is GPL-3.0: NextLib is GPL-3.0, and linking it means the combined work has
 to be GPL-3.0. It also ships FFmpeg under LGPLv3 — see [Third-party notices](#third-party-notices).
+
+## Search, and why it is local
+
+Search is a local index, not a panel query. That was not a preference — it is what the provider
+allows.
+
+Every server-side search action was tried against the provider these tests run on:
+`search_streams`, `search`, `search_vod`, `search_movies`, `search_movie` and `search_series` are
+**all ignored**, each answered with a login object. Passing `search` to `get_vod_streams` or
+`get_series` is worse than useless — the parameter is ignored and the entire catalogue comes back,
+large enough to have the app killed for memory while buffering it. There is no server-side search to
+call.
+
+So the app keeps its own index, in its own database file, and searches that.
+
+**Coverage is the trade, so it is shown rather than hidden.** Categories are fetched on demand, so a
+freshly installed app has almost nothing indexed, and a search that returns nothing is not evidence
+that a title is absent from your provider. The screen says so explicitly instead of implying the
+provider does not carry it, and offers one button to index the rest.
+
+Three things feed the index, in increasing order of effort:
+
+1. **Shelves you browse** are indexed as they load, which costs one write — the rows have just been
+   downloaded anyway.
+2. **A background pass** you start yourself, which walks every category a page at a time. It is
+   sequential rather than parallel, because a hundred simultaneous requests at one panel is how a
+   provider starts refusing them.
+3. **Resuming.** Progress is recorded per category, so closing the app mid-index continues where it
+   left off instead of starting again.
+
+**A shelf that cannot be read is skipped, not fatal.** This provider truncates large responses
+constantly, and testing found it the hard way: the first version let one oversized shelf end the
+whole run, having indexed 2,084 channels out of several hundred shelves, after which no amount of
+pressing the button again would ever finish it. A shelf that fails is now stepped over, left
+unrecorded so a later run can retry it, and **counted in the summary** — a run on the test provider
+finished with 9,019 titles added and 99 shelves unreadable, and saying so is the difference between a
+tool you can trust and one that quietly lies about what it knows.
+
+That last number is the honest limit of this feature: on a provider that truncates as readily as
+this one, roughly a third of the catalogue cannot be indexed at all. It is a property of the panel,
+not something the app can code around.
+
+---
 
 ## Design notes
 
@@ -199,11 +254,13 @@ Done: EPG, favourites, continue watching, films and series. Still to do, most va
 - **Audio smoothness and frame pacing cannot be judged in an emulator.** It has no hardware video
   decode and routes audio through the host, so it cannot tell you whether playback is smooth on your
   television. That has to be checked on the device.
-- **Films and series are verified against a mock panel, not a real provider.** The VOD half of the
-  Xtream API is less consistently implemented than the live half, and the real provider's film
-  catalogue was not reachable while this was being built. The mock reproduces the quirks already
-  observed on that provider — truncated responses, one combined category list — but it cannot
-  reproduce ones nobody has hit yet.
+- **Search cannot be complete on this provider.** See
+  [Search, and why it is local](#search-and-why-it-is-local). The panel implements no search action,
+  and truncates enough large responses that a full index run left 99 of 269 shelves unreadable. Those
+  titles are not findable, and no amount of retrying reliably fixes it.
+- **The indexer cannot be stopped once you leave the search screen.** It keeps running, and it is
+  resumable so nothing is lost, but the progress and the stop button are only on the search screen.
+  Force-stopping the app also stops it.
 - The debug APK is unsigned, as debug builds are. It is fine for sideloading; a release build needs
   a signing config that is deliberately not committed.
 - Dependencies are pinned to versions known to resolve together (AGP 8.7.3, Kotlin 2.0.21,

@@ -1,10 +1,12 @@
 package com.fourj.iptv.ui.vod
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.fourj.iptv.data.remote.toUserMessage
+import com.fourj.iptv.data.repository.SearchRepository
 import com.fourj.iptv.data.repository.VodRepository
 import com.fourj.iptv.data.repository.contentKey
 import com.fourj.iptv.data.repository.episodeContentKey
@@ -105,6 +107,7 @@ sealed interface Resumable {
 
 class VodViewModel(
     private val repository: VodRepository,
+    private val searchRepository: SearchRepository,
     val profile: ProviderProfile,
 ) : ViewModel() {
 
@@ -191,9 +194,11 @@ class VodViewModel(
                             repository.ensureCategoryLoaded(categoryId, kind)
                             emitAll(
                                 if (kind == ContentKind.MOVIE) {
-                                    repository.observeMovies(categoryId).map { ContentLoad(movies = it) }
+                                    repository.observeMovies(categoryId)
+                                        .map { ContentLoad(movies = it, kind = kind) }
                                 } else {
-                                    repository.observeSeries(categoryId).map { ContentLoad(series = it) }
+                                    repository.observeSeries(categoryId)
+                                        .map { ContentLoad(series = it, kind = kind) }
                                 },
                             )
                         }
@@ -208,6 +213,10 @@ class VodViewModel(
                             error = null,
                         )
                     }
+                    // Feed the search index as a shelf arrives. Free coverage: the rows were just
+                    // downloaded anyway, so this costs one write and makes the shelf searchable
+                    // without the viewer having to index anything deliberately.
+                    load.kind?.let { kind -> indexShelfForSearch(kind, load.movies, load.series) }
                 }
         }
     }
@@ -303,6 +312,55 @@ class VodViewModel(
 
     fun movieUrl(movie: Movie): String = repository.movieStreamUrl(movie)
 
+    /**
+     * Add a freshly loaded shelf to the search index.
+     *
+     * Best-effort, and for the same reason as the live channels: the index is a convenience, and a
+     * failure writing to it must not disturb browsing or playback.
+     */
+    private fun indexShelfForSearch(
+        kind: ContentKind,
+        movies: List<Movie>,
+        series: List<Series>,
+    ) {
+        val categoryName = _state.value.categories
+            .firstOrNull { it.id == _state.value.selectedCategoryId }
+            ?.name
+        viewModelScope.launch {
+            runCatching {
+                if (kind == ContentKind.MOVIE) {
+                    searchRepository.indexMovies(movies, categoryName)
+                } else {
+                    searchRepository.indexSeries(series, categoryName)
+                }
+            }.onFailure { Log.w(TAG, "could not index $categoryName for search", it) }
+        }
+    }
+
+    /**
+     * Resolve a film by id, for search results.
+     *
+     * Null when the film is not cached. The search index stores only names and ids, so a hit can
+     * name something whose details were never fetched - the caller has to handle that rather than
+     * assume every hit is playable.
+     */
+    suspend fun findMovieById(movieId: Int): Movie? = repository.findMovie(movieId)
+
+    /** As [findMovieById], for series. */
+    suspend fun findSeriesById(seriesId: Int): Series? = repository.findSeries(seriesId)
+
+    /**
+     * Point the browse screen at a title's own category before opening it.
+     *
+     * As with live channels: search can surface something from a shelf that was never opened, and
+     * the grid is driven by whichever category is selected. Opening a film while the grid showed a
+     * different shelf leaves the viewer returned to somewhere they were not looking.
+     */
+    suspend fun revealCategory(categoryId: String?) {
+        val id = categoryId ?: return
+        _state.update { it.copy(selectedCategoryId = id) }
+    }
+
     fun episodeUrl(episode: Episode): String? = repository.episodeStreamUrl(episode)
 
     /** The key a film or episode's resume position is stored under. */
@@ -379,8 +437,16 @@ class VodViewModel(
     }
 
     companion object {
+        private const val TAG = "4J"
+
         fun factory(container: AppContainer, profile: ProviderProfile) = viewModelFactory {
-            initializer { VodViewModel(container.vodRepository(profile), profile) }
+            initializer {
+                VodViewModel(
+                    repository = container.vodRepository(profile),
+                    searchRepository = container.searchRepository(profile),
+                    profile = profile,
+                )
+            }
         }
     }
 }
@@ -390,5 +456,14 @@ private data class ContentLoad(
     val movies: List<Movie> = emptyList(),
     val series: List<Series> = emptyList(),
     val loading: Boolean = false,
+    /**
+     * Which kind of shelf produced this, carried through the flow so the collector can index it.
+     *
+     * Null when nothing is selected. It has to travel with the rows rather than be read back out of
+     * the state, because by the time the rows arrive the state may already have moved on to another
+     * section - and indexing a film shelf under the series section's name would put the wrong
+     * category label on every one of those titles.
+     */
+    val kind: ContentKind? = null,
 )
 

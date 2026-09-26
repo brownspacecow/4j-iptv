@@ -49,6 +49,8 @@ import com.fourj.iptv.domain.model.ProviderProfile
 import com.fourj.iptv.ui.epg.NowNextRow
 import com.fourj.iptv.ui.live.LiveScreen
 import com.fourj.iptv.ui.live.LiveViewModel
+import com.fourj.iptv.ui.search.SearchScreen
+import com.fourj.iptv.ui.search.SearchViewModel
 import com.fourj.iptv.ui.theme.LocalUiScale
 import com.fourj.iptv.ui.vod.formatDuration
 import com.fourj.iptv.ui.vod.DetailTarget
@@ -100,6 +102,16 @@ fun AppShell(
 ) {
     var destination by remember { mutableStateOf(TopLevel.LIVE) }
     var vodPlayback by remember { mutableStateOf<VodPlayback?>(null) }
+
+    /**
+     * Search is an overlay rather than a fifth tab.
+     *
+     * A tab would give it a permanent slot in the top bar, and it is not a place the viewer lives -
+     * it is a question they ask and then leave. Worse, a tab is one of the arrow keys wide, and on a
+     * ten-foot interface every keypress has to earn its place. An overlay keeps the tabs meaning
+     * "where am I" and leaves search as "find me something", which is a different job.
+     */
+    var searchOpen by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val tabFocus = remember { FocusRequester() }
     val activity = LocalContext.current as? Activity
@@ -127,6 +139,12 @@ fun AppShell(
     val seriesDetail by vodViewModel.seriesDetail.collectAsStateWithLifecycle()
     val library by vodViewModel.library.collectAsStateWithLifecycle()
 
+    val searchViewModel: SearchViewModel = viewModel(
+        key = "search-${profile.baseUrl}",
+        factory = SearchViewModel.factory(container, profile),
+    )
+    val searchState by searchViewModel.state.collectAsStateWithLifecycle()
+
     /**
      * Back returns to the tab bar before it changes tabs, and only leaves from Live TV.
      *
@@ -140,7 +158,7 @@ fun AppShell(
      * handler being registered later is how back ended up closing the series detail as well as the
      * player: two handlers, one key press, and the wrong one won.
      */
-    BackHandler(enabled = vodPlayback == null) {
+    BackHandler(enabled = vodPlayback == null && !searchOpen) {
         when {
             vodState.detail != null -> vodViewModel.closeDetail()
             contentHasFocus -> tabFocus.requestFocus()
@@ -151,6 +169,19 @@ fun AppShell(
                 activity?.finish()
             }
         }
+    }
+
+    /**
+     * Closing search with back rather than through the general handler.
+     *
+     * A separate handler, because the general one would send back to the tab bar instead - the
+     * viewer who opened search to find one thing would have to press back twice to get out of it,
+     * and the first press would appear to do nothing. Search is a layer over the tabs, so back
+     * peels off the layer.
+     */
+    BackHandler(enabled = searchOpen) {
+        searchOpen = false
+        searchViewModel.clearQuery()
     }
 
     /**
@@ -185,6 +216,87 @@ fun AppShell(
 
             null -> Unit
         }
+    }
+
+    if (searchOpen) {
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            colors = SurfaceDefaults.colors(containerColor = MaterialTheme.colorScheme.background),
+        ) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                TopBar(
+                    current = TopLevel.LIVE,
+                    focusRequester = tabFocus,
+                    onSelect = {
+                        searchOpen = false
+                        destination = it
+                    },
+                    onSignOut = onSignOut,
+                    onSearch = { /* already open */ },
+                )
+                SearchScreen(
+                    state = searchState,
+                    onQueryChange = searchViewModel::onQueryChange,
+                    onClear = searchViewModel::clearQuery,
+                    onStartIndexing = searchViewModel::startIndexing,
+                    onCancelIndexing = searchViewModel::cancelIndexing,
+                    onHitClick = { hit ->
+                        scope.launch {
+                            when (hit.kind) {
+                                ContentKind.LIVE_CHANNEL -> {
+                                    val channel = liveViewModel.findChannel(hit.contentId)
+                                    if (channel != null) {
+                                        searchOpen = false
+                                        destination = TopLevel.LIVE
+                                        // Switch the grid to the channel's own category first, so
+                                        // the browse screen and the player agree on what is loaded.
+                                        liveViewModel.revealChannel(channel)
+                                        liveViewModel.play(channel)
+                                    }
+                                }
+
+                                ContentKind.MOVIE -> {
+                                    val movie = vodViewModel.findMovieById(hit.contentId)
+                                    if (movie != null) {
+                                        searchOpen = false
+                                        destination = TopLevel.MOVIES
+                                        vodViewModel.revealCategory(movie.categoryId)
+                                        vodViewModel.openMovie(movie)
+                                        val progress = library.progress(ContentKind.MOVIE, movie.id)
+                                        vodPlayback = VodPlayback.Film(
+                                            title = movie.name,
+                                            url = vodViewModel.movieUrl(movie),
+                                            kind = ContentKind.MOVIE,
+                                            id = movie.id,
+                                            progressKey = vodViewModel.progressKeyForMovie(movie.id),
+                                            posterUrl = movie.posterUrl,
+                                            resumeSeconds = progress?.positionSeconds ?: 0,
+                                            headers = buildMap {
+                                                movie.httpUserAgent?.let { put("User-Agent", it) }
+                                                movie.httpReferrer?.let { put("Referer", it) }
+                                            },
+                                        )
+                                    }
+                                }
+
+                                else -> {
+                                    // A series opens its detail rather than playing: an episode has
+                                    // to be picked, and jumping straight into one would guess.
+                                    val series = vodViewModel.findSeriesById(hit.contentId)
+                                    if (series != null) {
+                                        searchOpen = false
+                                        destination = TopLevel.SERIES
+                                        vodViewModel.revealCategory(series.categoryId)
+                                        vodViewModel.openSeries(series)
+                                    }
+                                }
+                            }
+                        }
+                    },
+                )
+            }
+        }
+        return
     }
 
     val current = vodPlayback
@@ -253,6 +365,7 @@ fun AppShell(
                 focusRequester = tabFocus,
                 onSelect = { destination = it },
                 onSignOut = onSignOut,
+                onSearch = { searchOpen = true },
             )
 
             // Focus tracking is scoped to the content area, not the whole column: the column also
@@ -355,6 +468,7 @@ private fun TopBar(
     focusRequester: FocusRequester,
     onSelect: (TopLevel) -> Unit,
     onSignOut: () -> Unit,
+    onSearch: () -> Unit,
 ) {
     val uiScale = LocalUiScale.current
     Row(
@@ -391,6 +505,8 @@ private fun TopBar(
         // category chips skipped past the header and landed on the "On now" row instead. A control
         // you can only hit with a pointer is not a control on a television. It also belongs with
         // the rest of the app's navigation, and it has to work from every tab, not just Live TV.
+        Button(onClick = onSearch) { Text("Search") }
+        Spacer(Modifier.width(10.dp))
         Button(onClick = onSignOut) { Text("Sign out") }
     }
 }

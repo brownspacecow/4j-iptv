@@ -82,6 +82,20 @@ class LiveRepository(
         syncDao.observeAll().map { rows -> rows.map { it.categoryId }.toSet() }
 
     /**
+     * The cached category list, for callers that need it in one shot.
+     *
+     * A suspend read rather than a collected flow: the search indexer needs the list once, up
+     * front, and standing up a Flow subscription to read a value it already has cached would be
+     * ceremony. Returns an empty list rather than throwing, because a missing category cache is a
+     * normal state on a first run and the caller's fallback is simply "index nothing yet".
+     */
+    suspend fun cachedCategories(): List<LiveCategory> = withContext(ioDispatcher) {
+        runCatching {
+            categoryDao.observeAllOnce().map { LiveCategory(it.categoryId, it.categoryName) }
+        }.getOrDefault(emptyList())
+    }
+
+    /**
      * Fetch a category's channels unless they are already cached.
      *
      * Categories are pulled one at a time on purpose. Asking for the whole live list in a single

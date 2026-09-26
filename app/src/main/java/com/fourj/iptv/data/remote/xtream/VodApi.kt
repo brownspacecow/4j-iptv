@@ -40,10 +40,21 @@ interface VodApi {
         @Query("action") action: String = "get_series_categories",
     ): List<SeriesCategoryDto>
 
+    /**
+     * Series, optionally narrowed to one category and optionally paged.
+     *
+     * [limit] and [start] exist for the search indexer. This provider's catalogue is on the order
+     * of a hundred thousand titles, and asking for all of it in one call is what truncated a
+     * response and killed the app during testing - so the indexer walks the catalogue a page at a
+     * time instead. Paging by [categoryId] is the outer loop and paging within a category the inner
+     * one, because a category is the unit the panel already handles well.
+     */
     @GET("player_api.php")
     suspend fun series(
         @Query("action") action: String = "get_series",
         @Query("category_id") categoryId: String? = null,
+        @Query("limit") limit: Int? = null,
+        @Query("start") start: Int? = null,
     ): List<SeriesDto>
 
     /**
