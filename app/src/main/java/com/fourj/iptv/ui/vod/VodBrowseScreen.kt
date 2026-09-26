@@ -52,7 +52,6 @@ fun VodBrowseScreen(
     state: VodUiState,
     section: VodSection,
     library: LibraryState,
-    onSectionChange: (VodSection) -> Unit,
     onCategoryChange: (String) -> Unit,
     onMovieClick: (Movie) -> Unit,
     onSeriesClick: (Series) -> Unit,
@@ -65,22 +64,9 @@ fun VodBrowseScreen(
         colors = SurfaceDefaults.colors(containerColor = MaterialTheme.colorScheme.background),
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = uiScale.horizontalMarginDp.dp, vertical = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                VodSection.entries.forEach { entry ->
-                    Button(
-                        onClick = { onSectionChange(entry) },
-                        scale = androidx.tv.material3.ButtonDefaults.scale(focusedScale = 1.08f),
-                    ) {
-                        Text(if (entry == VodSection.MOVIES) "Movies" else "Series")
-                    }
-                }
-            }
-
+            // No Movies/Series switcher in here on purpose: the app's top bar already carries both,
+            // and a second control for the same choice is a trap - two things to keep in step, and
+            // the viewer has to work out which one is the real tab.
             if (library.continueWatching.isNotEmpty()) {
                 ContinueWatchingRow(
                     items = library.continueWatching,

@@ -5,6 +5,8 @@ import com.fourj.iptv.data.local.MovieEntity
 import com.fourj.iptv.data.local.SeriesEntity
 import com.fourj.iptv.data.local.VodCategoryEntity
 import com.fourj.iptv.data.local.VodDatabase
+import com.fourj.iptv.data.local.replaceMoviesInCategory
+import com.fourj.iptv.data.local.replaceSeriesInCategory
 import com.fourj.iptv.data.remote.StreamUrls
 import com.fourj.iptv.data.remote.runCatchingCancellable
 import com.fourj.iptv.data.remote.retrying
@@ -47,6 +49,7 @@ class VodRepository(
                 val rows = categories.mapIndexedNotNull { index, dto ->
                     dto.toEntity(index, ContentKind.MOVIE.name)
                 }
+                database.vodDao().upsertVodCategories(rows)
                 rows.map { VodCategory(it.categoryId, it.categoryName) }
             }
     }
@@ -54,10 +57,12 @@ class VodRepository(
     suspend fun refreshSeriesCategories(): Result<List<VodCategory>> = withContext(ioDispatcher) {
         retrying(label = "get_series_categories") { api.seriesCategories() }
             .map { categories ->
-                // stored under their own ids and presented as one list in the UI.
+                // Films and series are separate namespaces but a panel may return them in one
+                // list, so each is recorded under its own kind rather than inferred later.
                 val rows = categories.mapIndexedNotNull { index, dto ->
                     dto.toEntity(index, ContentKind.SERIES.name)
                 }
+                database.vodDao().upsertVodCategories(rows)
                 rows.map { VodCategory(it.categoryId, it.categoryName) }
             }
     }
@@ -68,10 +73,16 @@ class VodRepository(
             .flowOn(ioDispatcher)
 
     /**
-     * Load a category's films and series.
+     * Load a category's contents, replacing what was cached for it.
      *
-     * Both are fetched because a panel's categories are not cleanly separated, and a category
-     * that returns nothing from one call and plenty from the other is common.
+     * Films and series are fetched separately because they are separate namespaces, even though a
+     * panel may present them under one category list. Only the table for [kind] is touched: the two
+     * namespaces can share a category id, so clearing both would empty a series shelf because a
+     * film shelf was refreshed.
+     *
+     * The result is authoritative, so a film withdrawn at the provider disappears from the grid
+     * rather than lingering forever. An empty response therefore clears the category - a genuine
+     * "this shelf is now empty" is different from a failed fetch, and only the latter throws.
      */
     suspend fun ensureCategoryLoaded(categoryId: String, kind: ContentKind): Result<Unit> =
         withContext(ioDispatcher) {
@@ -80,16 +91,12 @@ class VodRepository(
                     val rows = retrying(label = "get_vod_streams[$categoryId]") {
                         api.vodStreams(categoryId = categoryId)
                     }.getOrThrow().mapIndexedNotNull { index, dto -> dto.toEntity(index) }
-                    if (rows.isNotEmpty()) {
-                        database.vodDao().upsertMovies(rows)
-                    }
+                    database.replaceMoviesInCategory(categoryId, rows)
                 } else {
                     val rows = retrying(label = "get_series[$categoryId]") {
                         api.series(categoryId = categoryId)
                     }.getOrThrow().mapIndexedNotNull { index, dto -> dto.toEntity(index) }
-                    if (rows.isNotEmpty()) {
-                        database.vodDao().upsertSeries(rows)
-                    }
+                    database.replaceSeriesInCategory(categoryId, rows)
                 }
             }
         }

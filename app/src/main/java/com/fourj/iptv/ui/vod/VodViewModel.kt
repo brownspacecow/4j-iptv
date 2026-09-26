@@ -20,6 +20,7 @@ import com.fourj.iptv.domain.model.VodCategory
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
@@ -98,10 +99,14 @@ class VodViewModel(
     private val _library = MutableStateFlow(LibraryState())
     val library: StateFlow<LibraryState> = _library.asStateFlow()
 
-    private var section = VodSection.MOVIES
-
-    /** Mirror of [section] as a flow, so collectors can react to it without a mutable read. */
-    private val sectionMirror = MutableStateFlow(VodSection.MOVIES)
+    /**
+     * Which section is being browsed.
+     *
+     * A flow in its own right rather than a plain field, because the category and content
+     * collectors have to react to it and reading a mutable var from inside a collector is how
+     * they end up disagreeing with what is on screen.
+     */
+    private val section = MutableStateFlow(VodSection.MOVIES)
 
     init {
         observeCategoryList()
@@ -132,12 +137,12 @@ class VodViewModel(
      */
     private fun observeCategoryList() {
         viewModelScope.launch {
-            // The section lives outside the state flow, so it is mirrored into a flow here rather
-            // than read from a mutable field inside a collector.
-            sectionMirror
-                    .flatMapLatest { current -> repository.observeVodCategories(current.kind) }
+            section
+                .flatMapLatest { current -> repository.observeVodCategories(current.kind) }
                 .collect { categories ->
                     _state.update { it.copy(categories = categories, isLoadingCategories = false) }
+                    // Adopt the first category when the current one is not in this section's list,
+                    // so switching tabs never lands on an empty shelf.
                     val selected = _state.value.selectedCategoryId
                     if (categories.none { it.id == selected }) {
                         categories.firstOrNull()?.let { first -> selectCategory(first.id) }
@@ -149,30 +154,33 @@ class VodViewModel(
     /**
      * Load the selected category's contents, cached-first.
      *
-     * `flatMapLatest` means switching category or section cancels the previous load rather than
-     * racing two of them to update the same fields.
+     * Keyed on the (kind, category) pair and nothing else. Keying on the whole state instead looks
+     * equivalent but is not: loading writes to the database, the database flow emits, the emission
+     * updates the state, and the state change restarts the load - which writes again. That is a
+     * loop, and it hammers the provider with the same request dozens of times a second.
      */
     private fun observeContents() {
         viewModelScope.launch {
-            _state.flatMapLatest { current ->
-                val kind = section.kind
-                val categoryId = current.selectedCategoryId
-                if (categoryId == null) {
-                    flowOf(ContentLoad())
-                } else {
-                    flow {
-                        emit(ContentLoad(loading = true))
-                        repository.ensureCategoryLoaded(categoryId, kind)
-                        emitAll(
-                            if (kind == ContentKind.MOVIE) {
-                                repository.observeMovies(categoryId).map { ContentLoad(movies = it) }
-                            } else {
-                                repository.observeSeries(categoryId).map { ContentLoad(series = it) }
-                            },
-                        )
+            _state
+                .map { it.section.kind to it.selectedCategoryId }
+                .distinctUntilChanged()
+                .flatMapLatest { (kind, categoryId) ->
+                    if (categoryId == null) {
+                        flowOf(ContentLoad())
+                    } else {
+                        flow {
+                            emit(ContentLoad(loading = true))
+                            repository.ensureCategoryLoaded(categoryId, kind)
+                            emitAll(
+                                if (kind == ContentKind.MOVIE) {
+                                    repository.observeMovies(categoryId).map { ContentLoad(movies = it) }
+                                } else {
+                                    repository.observeSeries(categoryId).map { ContentLoad(series = it) }
+                                },
+                            )
+                        }
                     }
                 }
-            }
                 .collect { load ->
                     _state.update {
                         it.copy(
@@ -200,9 +208,8 @@ class VodViewModel(
     }
 
     fun browse(next: VodSection) {
-        if (section == next) return
-        section = next
-        sectionMirror.value = next
+        if (section.value == next) return
+        section.value = next
         _state.update {
             it.copy(
                 section = next,
@@ -214,7 +221,6 @@ class VodViewModel(
             )
         }
     }
-
     fun selectCategory(categoryId: String) {
         _state.update { it.copy(selectedCategoryId = categoryId) }
     }

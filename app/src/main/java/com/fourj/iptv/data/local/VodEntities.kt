@@ -11,12 +11,15 @@ import androidx.room.PrimaryKey
  * observed returning films and series in one combined list, distinguished only by names like
  * "Movies-New Releases" against "Series-Drama" - so without a stored kind the Movies tab could
  * select a series category and show nothing at all.
+ *
+ * The key is (id, kind) and not the id alone, because the two namespaces draw on the same pool of
+ * numbers. With the id alone, a series category of 7 silently replaced a film category of 7.
  */
-@Entity(tableName = "vod_categories", indices = [Index("kind")])
+@Entity(tableName = "vod_categories", primaryKeys = ["categoryId", "kind"], indices = [Index("kind")])
 data class VodCategoryEntity(
-    @PrimaryKey val categoryId: String,
-    val categoryName: String,
+    val categoryId: String,
     val kind: String,
+    val categoryName: String,
     val sortOrder: Int,
 )
 

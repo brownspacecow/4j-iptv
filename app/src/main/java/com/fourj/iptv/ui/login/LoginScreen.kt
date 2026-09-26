@@ -109,6 +109,9 @@ fun LoginScreen(
                     onValueChange = viewModel::onUsernameChange,
                     label = "Username",
                     modifier = Modifier.width(300.dp),
+                    // Password sits to the right, and nothing else on this row does. Without this,
+                    // right always means "edit" and the second field is unreachable by remote.
+                    movesFocusRightAtEnd = true,
                     keyboardOptions = KeyboardOptions(
                         keyboardType = KeyboardType.Text,
                         imeAction = ImeAction.Next,

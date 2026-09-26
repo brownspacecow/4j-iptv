@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -193,11 +194,14 @@ fun AppShell(
                             )
                         }
                     } else {
+                        // The top bar is the only Movies/Series control, so choosing a destination
+                        // is what switches the section. Driven here rather than from inside the
+                        // browse screen so there is one source of truth for what is showing.
+                        LaunchedEffect(section) { vodViewModel.browse(section) }
                         VodBrowseScreen(
                             state = vodState,
                             section = section,
                             library = library,
-                            onSectionChange = vodViewModel::browse,
                             onCategoryChange = vodViewModel::selectCategory,
                             onMovieClick = { movie ->
                                 vodViewModel.openMovie(movie)
