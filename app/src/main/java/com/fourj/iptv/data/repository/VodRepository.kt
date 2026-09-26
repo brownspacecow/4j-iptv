@@ -1,5 +1,6 @@
-﻿package com.fourj.iptv.data.repository
+package com.fourj.iptv.data.repository
 
+import android.util.Log
 import com.fourj.iptv.data.local.EpisodeEntity
 import com.fourj.iptv.data.local.MovieEntity
 import com.fourj.iptv.data.local.SeriesEntity
@@ -126,11 +127,28 @@ class VodRepository(
                 api.seriesInfo(seriesId = seriesId)
             }.getOrThrow()
 
-            val rows = response.episodes?.seasons.orEmpty().flatMap { season ->
+            val seasons = response.episodes?.seasons.orEmpty()
+            val rows = seasons.flatMap { season ->
                 val number = season.episodes.firstNotNullOfOrNull { it.season }
                     ?: season.id?.toIntOrNull()
                     ?: 0
                 season.episodes.mapNotNull { it.toEntity(seriesId, number) }
+            }
+            // Worth a line in the log. "No episodes here" is otherwise indistinguishable between a
+            // series the provider has no episodes for and a payload this code failed to read, and
+            // those need very different fixes. Observed against a real provider: a series with full
+            // metadata and a poster, and no episodes at all.
+            val returned = seasons.sumOf { it.episodes.size }
+            Log.i(
+                TAG,
+                "series $seriesId: provider returned ${seasons.size} season(s), $returned episode(s); " +
+                    "stored ${rows.size}",
+            )
+            if (returned > 0 && rows.isEmpty()) {
+                Log.w(
+                    TAG,
+                    "series $seriesId: dropped all $returned episode(s) - no id or info_hash on any",
+                )
             }
             if (rows.isNotEmpty()) {
                 database.vodDao().clearEpisodes(seriesId)
@@ -417,4 +435,4 @@ internal fun contentKey(kind: ContentKind, contentId: Int): String = "${kind.nam
  */
 internal fun episodeContentKey(episodeRowKey: String): String = "${ContentKind.EPISODE.name}:$episodeRowKey"
 
-
+private const val TAG = "4J"

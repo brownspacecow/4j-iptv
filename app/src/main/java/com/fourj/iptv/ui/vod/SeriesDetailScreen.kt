@@ -135,7 +135,14 @@ fun SeriesDetailScreen(
             when {
                 detail.error != null -> Message(detail.error, MaterialTheme.colorScheme.error)
                 detail.isLoading -> Message("Loading episodes…")
-                detail.episodes.isEmpty() -> Message("No episodes here.")
+                // Say whose fault it is. Confirmed against a real provider: plenty of series carry
+                // a poster, a plot, a cast and a release date, and then return no seasons and no
+                // episodes at all. "No episodes here" reads like the app is broken; naming the
+                // provider tells the viewer there is simply nothing to play on their subscription.
+                detail.episodes.isEmpty() -> Message(
+                    "Your provider has no episodes for this series.",
+                    MaterialTheme.colorScheme.onBackground,
+                )
                 else -> LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(
