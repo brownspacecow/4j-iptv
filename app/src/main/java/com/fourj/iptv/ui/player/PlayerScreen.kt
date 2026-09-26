@@ -119,10 +119,18 @@ fun PlayerScreen(
                         .setUsage(C.USAGE_MEDIA)
                         .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
                         .build(),
-                    // Without this ExoPlayer does not participate in audio focus at all, which
-                    // on a television means the app can talk over a system sound or another
-                    // player instead of ducking for it.
-                    /* handleAudioFocus = */ true,
+                    // Deliberately NOT handling audio focus.
+                    //
+                    // Handling it means an abandon/request pair on every single channel change -
+                    // two binder round trips to the audio service each time you zap, and the
+                    // service briefly has no idea who is playing. Zapping is this app's primary
+                    // navigation, so that cost is paid constantly, and the churn is a plausible
+                    // source of the audible glitching on channel change.
+                    //
+                    // The trade-off accepted: 4J TV will talk over a system sound rather than
+                    // ducking for it. For a full-screen television app that is the right way
+                    // round - a notification chime should not pause the programme.
+                    /* handleAudioFocus = */ false,
                 )
                 setMediaItem(MediaItem.fromUri(streamUrl))
                 playWhenReady = true
