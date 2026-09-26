@@ -82,17 +82,23 @@ fun SyncScreen(
 
         if (state.isIndexing) {
             Text(
-                text = "Syncing… ${state.indexedSoFar} titles found",
+                text = if (state.isFetchingShelves) {
+                    "Asking your provider what is on your account…"
+                } else {
+                    "Syncing… ${state.indexedSoFar} titles found"
+                },
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onBackground,
             )
-            Spacer(Modifier.height(8.dp))
-            ProgressBar(progress.fraction)
+            if (!state.isFetchingShelves) {
+                Spacer(Modifier.height(8.dp))
+                ProgressBar(progress.fraction)
+            }
             Spacer(Modifier.height(18.dp))
         }
 
         Text(
-            text = statusLine(state),
+            text = statusLine(state, progress),
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onBackground,
         )
@@ -148,11 +154,16 @@ fun SyncScreen(
  * A dedicated sentence rather than a number, because "9,019 titles" and "9,019 of 20,000" are very
  * different things to a viewer and only the second one is honest.
  */
-private fun statusLine(state: SearchUiState): String {
+private fun statusLine(state: SearchUiState, progress: SyncProgress): String {
     val coverage = state.coverage ?: return "Checking what is searchable…"
     return when {
         state.isIndexing -> "Syncing. You can leave this screen and it will keep going."
-        coverage.total == 0 -> "Nothing synced yet. Search will not find anything until you sync."
+        coverage.total == 0 && !state.isIndexing ->
+            if (progress.shelvesTotal == 0) {
+                "Nothing synced yet. Press Start sync to download your catalogue."
+            } else {
+                "Nothing synced yet."
+            }
         coverage.isComplete && state.skippedShelves == 0 ->
             "Everything is synced. ${coverage.total} titles are searchable."
         coverage.isComplete ->

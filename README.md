@@ -12,7 +12,7 @@ Live TV with a programme guide, plus films and series with resume, and search ac
 |---|---|
 | Features | Live TV, EPG, films, series, search, continue watching, favourites |
 | Builds | `assembleFullDebug`, `assembleLiteDebug` |
-| Tests | 168 unit tests, all passing |
+| Tests | 175 unit tests, all passing |
 | Verified on hardware | **No** — see [Honest limitations](#honest-limitations) |
 
 ## What works
@@ -42,8 +42,9 @@ Live TV with a programme guide, plus films and series with resume, and search ac
 - **One search box for live TV, films and series**, reachable from every tab, with results grouped by
   type. Typing filters as you go — debounced, so a burst of keypresses gives one settled answer
   rather than a list thrashing under you.
-- **A sync you start yourself**, on its own screen, with progress per kind and a stop button. It picks
-  up where it left off, and it can be left running while you watch something.
+- **A sync you start yourself**, on its own screen, with progress per kind and a stop button. It
+  fetches your shelf list itself, so it works on a fresh install without browsing first; it picks up
+  where it left off if stopped; and it can be left running while you watch something.
 - **Ranking by how well the title matches.** A title starting with what you typed comes first, then
   one containing the word, then the rest.
 - **Instant and offline.** Search is a local query, so it never waits on a provider and works with
@@ -90,7 +91,7 @@ sdk.dir=/path/to/Android/sdk
 Then:
 
 ```bash
-./gradlew :app:testFullDebugUnitTest     # 168 unit tests
+./gradlew :app:testFullDebugUnitTest     # 175 unit tests
 ./gradlew :app:assembleFullDebug         # APK with software audio + video fallback (~43 MB debug)
 ./gradlew :app:assembleLiteDebug         # smaller APK, no software decoders
 ```

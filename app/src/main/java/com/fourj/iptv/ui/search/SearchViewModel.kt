@@ -28,6 +28,8 @@ data class SearchUiState(
     val isSearching: Boolean = false,
     val coverage: IndexCoverage? = null,
     val isIndexing: Boolean = false,
+    /** Getting the shelf list from the provider, before any shelf can be walked. */
+    val isFetchingShelves: Boolean = false,
     val indexedSoFar: Int = 0,
     val indexError: String? = null,
     /** Shelves that could not be read at all, from the run in progress or the last one. */
@@ -71,9 +73,14 @@ data class SyncProgress(
     val shelvesDone: Int get() = liveDone + movieDone + seriesDone
     val shelvesTotal: Int get() = liveTotal + movieTotal + seriesTotal
 
-    /** 0f..1f, or null before any shelf is known - an empty total must not read as "finished". */
+    /**
+     * 0f..1f, or null before any shelf is known - an empty total must not read as "finished".
+     *
+     * Clamped, because a shelf can appear at the provider between the list being fetched and the
+     * run finishing, and a bar drawn past its own end looks broken rather than slightly wrong.
+     */
     val fraction: Float?
-        get() = if (shelvesTotal == 0) null else shelvesDone.toFloat() / shelvesTotal
+        get() = if (shelvesTotal == 0) null else (shelvesDone.toFloat() / shelvesTotal).coerceIn(0f, 1f)
 }
 
 /**
@@ -89,6 +96,9 @@ class SearchViewModel(
     private val repository: SearchRepository,
     private val liveCategories: suspend () -> List<LiveCategory>,
     private val vodShelves: suspend () -> List<VodShelf>,
+    private val refreshLiveCategories: suspend () -> Unit,
+    private val refreshFilmCategories: suspend () -> Unit,
+    private val refreshSeriesCategories: suspend () -> Unit,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(SearchUiState())
@@ -155,15 +165,31 @@ class SearchViewModel(
     /**
      * Walk the whole catalogue into the index.
      *
-     * Opt-in and in the background, because on a provider this size it is a long download and
-     * nobody should start it by opening a search screen. It is also the only way search becomes
-     * complete, so it is worth one explicit press rather than doing it silently behind the viewer.
+     * **Fetches the shelf list first.** It used to read the cached category lists, which is why
+     * pressing Sync on a fresh install indexed live channels and nothing else: the live categories are
+     * loaded on startup because Live TV is the first screen, and the film and series categories are
+     * only ever fetched when someone opens the Movies or Series tab. So a sync that had never been
+     * preceded by a browse had no idea how many film shelves existed, and reported them as "not
+     * downloaded yet" - which is accurate, and useless. A sync now fetches the category lists itself
+     * and is self-sufficient, whether or not any tab has been opened.
+     *
+     * Opt-in and in the background, because on a provider this size it is a long download and nobody
+     * should start it by opening a search screen. Resumable, and stoppable from the sync screen.
      */
     fun startIndexing() {
         if (indexJob?.isActive == true) return
         indexJob = viewModelScope.launch {
-            _state.update { it.copy(isIndexing = true, indexError = null, indexedSoFar = 0) }
+            _state.update {
+                it.copy(isIndexing = true, indexError = null, indexedSoFar = 0, isFetchingShelves = true)
+            }
             try {
+                // Sequential rather than parallel: one panel, and three requests at once is how it
+                // starts refusing them.
+                runCatching { refreshLiveCategories() }
+                runCatching { refreshFilmCategories() }
+                runCatching { refreshSeriesCategories() }
+                _state.update { it.copy(isFetchingShelves = false) }
+
                 val live = runCatching { liveCategories() }.getOrDefault(emptyList())
                 val vod = runCatching { vodShelves() }.getOrDefault(emptyList())
                 scopesTotal = live.size + vod.size
@@ -211,7 +237,7 @@ class SearchViewModel(
             } catch (e: Exception) {
                 _state.update { it.copy(indexError = e.toUserMessage()) }
             } finally {
-                _state.update { it.copy(isIndexing = false) }
+                _state.update { it.copy(isIndexing = false, isFetchingShelves = false) }
             }
         }
     }
@@ -233,11 +259,15 @@ class SearchViewModel(
             object : ViewModelProvider.Factory {
                 @Suppress("UNCHECKED_CAST")
                 override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                    val repository = container.searchRepository(profile)
+                    val live = container.liveRepository(profile)
+                    val vod = container.vodRepository(profile)
                     return SearchViewModel(
-                        repository = repository,
-                        liveCategories = { container.liveRepository(profile).cachedCategories() },
-                        vodShelves = { container.vodRepository(profile).cachedShelves() },
+                        repository = container.searchRepository(profile),
+                        liveCategories = { live.cachedCategories() },
+                        vodShelves = { vod.cachedShelves() },
+                        refreshLiveCategories = { live.refreshCategories() },
+                        refreshFilmCategories = { vod.refreshVodCategories() },
+                        refreshSeriesCategories = { vod.refreshSeriesCategories() },
                     ) as T
                 }
             }
