@@ -448,6 +448,9 @@ fun AppShell(
                                 )
                             },
                             onSeriesClick = { vodViewModel.openSeries(it) },
+                            onRefresh = {
+                                vodState.selectedCategoryId?.let(vodViewModel::refreshCategory)
+                            },
                         )
                     }
                 }

@@ -1,4 +1,4 @@
-﻿package com.fourj.iptv.data.repository
+package com.fourj.iptv.data.repository
 
 import com.fourj.iptv.data.local.FourJDatabase
 import com.fourj.iptv.data.local.LiveCategoryDao
@@ -14,7 +14,6 @@ import com.fourj.iptv.data.remote.retrying
 import com.fourj.iptv.data.remote.xtream.LiveCategoryDto
 import com.fourj.iptv.data.remote.xtream.LiveStreamDto
 import com.fourj.iptv.data.remote.xtream.XtreamApi
-import com.fourj.iptv.domain.model.EpgListing
 import com.fourj.iptv.domain.model.LiveCategory
 import com.fourj.iptv.domain.model.LiveChannel
 import com.fourj.iptv.domain.model.ProviderProfile
@@ -78,9 +77,6 @@ class LiveRepository(
     fun observeChannels(categoryId: String): Flow<List<LiveChannel>> =
         channelDao.observeByCategory(categoryId).map { rows -> rows.map { it.toModel() } }
 
-    fun observeSyncedCategories(): Flow<Set<String>> =
-        syncDao.observeAll().map { rows -> rows.map { it.categoryId }.toSet() }
-
     /**
      * The cached category list, for callers that need it in one shot.
      *
@@ -120,8 +116,6 @@ class LiveRepository(
     }
 
     fun streamUrl(channel: LiveChannel): String = StreamUrls.liveStream(profile, channel)
-
-    fun playlistUrl(): String = StreamUrls.playlist(profile)
 
     suspend fun clearCache() = withContext(ioDispatcher) {
         channelDao.clear()

@@ -5,7 +5,9 @@ import com.fourj.iptv.data.local.IndexProgressEntity
 import com.fourj.iptv.data.local.SearchIndexDatabase
 import com.fourj.iptv.data.local.SearchIndexEntity
 import com.fourj.iptv.data.remote.retrying
+import com.fourj.iptv.data.remote.xtream.SeriesDto
 import com.fourj.iptv.data.remote.xtream.VodApi
+import com.fourj.iptv.data.remote.xtream.VodStreamDto
 import com.fourj.iptv.data.remote.xtream.XtreamApi
 import com.fourj.iptv.domain.model.ContentKind
 import com.fourj.iptv.domain.model.LiveCategory
@@ -317,55 +319,50 @@ class SearchRepository(
     }
 
     /**
-     * Walk one series category, a page at a time, returning how many titles were added.
+     * Walk one on-demand shelf a page at a time, returning how many titles were added.
      *
-     * Separate from [indexMovieCategory] rather than one body behind a flag: `get_series` and
-     * `get_vod_streams` return different DTO types, and folding them into a single
-     * `val page = if (...) ... else ...` widens the element type to their common ancestor, after
-     * which the DTO-to-row mapping no longer resolves. The duplication is the cheaper trade.
+     * [fetch] asks the panel for the page at a given offset and returns it as a [Page]. It is
+     * supplied by the caller because `get_series` and `get_vod_streams` return different DTO types;
+     * the two used to be near-identical loops differing only in that call and the row mapping.
+     *
+     * **Stops when paging turns out not to work** - see [pagingIsHonoured].
      */
-    private suspend fun indexSeriesCategory(category: VodCategory): Int {
-        val scope = indexScope(ContentKind.SERIES, category.id)
-        val start = dao.progressFor(scope)
-        if (start?.complete == true) return 0
-        var offset = start?.nextOffset ?: 0
-        var fetched = start?.indexed ?: 0
+    private suspend fun indexShelf(
+        category: VodCategory,
+        kind: ContentKind,
+        fetch: suspend (offset: Int) -> Page,
+    ): Int {
+        val scope = indexScope(kind, category.id)
+        val resume = dao.progressFor(scope)
+        if (resume?.complete == true) return 0
+
+        var offset = resume?.nextOffset ?: 0
+        var fetched = resume?.indexed ?: 0
         var added = 0
+        var firstIdOfFirstPage: Int? = null
 
         while (true) {
-            val page = retrying(label = "index series[${category.id}]@$offset") {
-                vodApi.series(categoryId = category.id, limit = pageSize, start = offset)
-            }.getOrThrow()
+            val page = fetch(offset)
+            val honoursPaging = pagingIsHonoured(firstIdOfFirstPage, page.rows.firstOrNull()?.contentId)
+            if (firstIdOfFirstPage == null) firstIdOfFirstPage = page.rows.firstOrNull()?.contentId
 
-            val rows = page.mapNotNull { dto ->
-                val item = dto.toEntity(sortOrder = 0)?.toModel() ?: return@mapNotNull null
-                if (item.name.isBlank()) return@mapNotNull null
-                SearchIndexEntity(
-                    key = indexKey(ContentKind.SERIES, item.id),
-                    kind = ContentKind.SERIES.name,
-                    contentId = item.id,
-                    name = item.name,
-                    nameLower = item.name.lowercase(),
-                    subtitle = category.name,
-                    categoryId = category.id,
-                    posterUrl = item.posterUrl,
-                    iconUrl = null,
-                )
-            }
-            if (rows.isNotEmpty()) {
-                dao.upsertAll(rows)
-                added += rows.size
-                fetched += rows.size
+            if (page.rows.isNotEmpty()) {
+                dao.upsertAll(page.rows)
+                added += page.rows.size
+                fetched += page.rows.size
             }
 
-            // A page shorter than asked for is the end of the category. Stopping on that rather than
-            // on an empty page matters: a panel can return an empty page for a transient reason, and
-            // treating that as "finished" would silently leave a shelf unindexed.
-            val finished = page.size < pageSize
+            // Finished when the shelf is smaller than a page, or when the panel has just proved it
+            // ignores the offset and has handed back the same first row twice.
+            //
+            // Measured on what the panel *sent*, not on what survived filtering: a full page with a
+            // few untitled rows dropped would otherwise look like a short page and end the shelf
+            // early, leaving everything after it unindexed with nothing to show for it.
+            val finished = page.received < pageSize || !honoursPaging
             dao.saveProgress(
                 IndexProgressEntity(
                     scope = scope,
-                    nextOffset = if (finished) fetched else offset + page.size,
+                    nextOffset = if (finished) fetched else offset + page.received,
                     indexed = fetched,
                     complete = finished,
                     updatedAtMillis = System.currentTimeMillis(),
@@ -375,67 +372,98 @@ class SearchRepository(
 
             // Advance by what the panel actually returned, not by the page size requested. A panel
             // that quietly caps its page would otherwise skip the titles in between.
-            offset += page.size
+            offset += page.received
         }
     }
 
-    /** As [indexSeriesCategory], for a film shelf. */
-    private suspend fun indexMovieCategory(category: VodCategory): Int {
-        val scope = indexScope(ContentKind.MOVIE, category.id)
-        val start = dao.progressFor(scope)
-        if (start?.complete == true) return 0
-        var offset = start?.nextOffset ?: 0
-        var fetched = start?.indexed ?: 0
-        var added = 0
+    /**
+     * One page from the panel: how many titles it sent, and the indexable ones among them.
+     *
+     * Both counts, because they answer different questions. [received] is what decides whether the
+     * shelf has run out; [rows] is what gets stored.
+     */
+    private class Page(val received: Int, val rows: List<SearchIndexEntity>)
 
-        while (true) {
+    /**
+     * Whether the panel is honouring `start`, decided by whether the second page starts where the
+     * first one did.
+     *
+     * Null on the first page, where there is nothing to compare against and the answer is "assume
+     * yes" - which is the safe direction, because a panel that does page will be walked fully.
+     *
+     * **This guard is not hypothetical.** The provider tested returns byte-identical rows for
+     * `start=0`, `start=5` and `start=500` on the same category: `limit` and `start` are discarded
+     * and the whole shelf comes back every time. Without this check, a shelf of 500 or more titles
+     * that parsed successfully would loop forever, re-inserting the same rows and never finishing.
+     * It only escaped that before because such shelves were also large enough to be truncated by the
+     * panel and skipped - the loop was never exercised, just never triggered.
+     */
+    private fun pagingIsHonoured(firstIdOfFirstPage: Int?, firstIdOfThisPage: Int?): Boolean {
+        if (firstIdOfFirstPage == null) return true
+        if (firstIdOfThisPage == null) return true
+        return firstIdOfFirstPage != firstIdOfThisPage
+    }
+
+    private suspend fun indexSeriesCategory(category: VodCategory): Int =
+        indexShelf(category, ContentKind.SERIES) { offset ->
+            val page = retrying(label = "index series[${category.id}]@$offset") {
+                vodApi.series(categoryId = category.id, limit = pageSize, start = offset)
+            }.getOrThrow()
+            Page(page.size, page.mapNotNull { it.toSearchRow(category, ContentKind.SERIES) })
+        }
+
+    private suspend fun indexMovieCategory(category: VodCategory): Int =
+        indexShelf(category, ContentKind.MOVIE) { offset ->
             val page = retrying(label = "index movies[${category.id}]@$offset") {
                 vodApi.vodStreams(categoryId = category.id, limit = pageSize, start = offset)
             }.getOrThrow()
-
-            val rows = page.mapNotNull { dto ->
-                val item = dto.toEntity(sortOrder = 0)?.toModel() ?: return@mapNotNull null
-                if (item.name.isBlank()) return@mapNotNull null
-                SearchIndexEntity(
-                    key = indexKey(ContentKind.MOVIE, item.id),
-                    kind = ContentKind.MOVIE.name,
-                    contentId = item.id,
-                    name = item.name,
-                    nameLower = item.name.lowercase(),
-                    subtitle = category.name,
-                    categoryId = category.id,
-                    posterUrl = item.posterUrl,
-                    iconUrl = null,
-                )
-            }
-            if (rows.isNotEmpty()) {
-                dao.upsertAll(rows)
-                added += rows.size
-                fetched += rows.size
-            }
-
-            val finished = page.size < pageSize
-            dao.saveProgress(
-                IndexProgressEntity(
-                    scope = scope,
-                    nextOffset = if (finished) fetched else offset + page.size,
-                    indexed = fetched,
-                    complete = finished,
-                    updatedAtMillis = System.currentTimeMillis(),
-                ),
-            )
-            if (finished) return added
-            offset += page.size
+            Page(page.size, page.mapNotNull { it.toSearchRow(category, ContentKind.MOVIE) })
         }
+
+    /**
+     * One film as an index row, or null when the panel sent something unusable.
+     *
+     * The DTO is mapped twice - once for the id, once for the rest - rather than sharing a helper
+     * with [SeriesDto.toSearchRow]. Three extracted lambdas to avoid repeating six field
+     * assignments is the kind of cleverness that costs more to read than it saves.
+     */
+    private fun VodStreamDto.toSearchRow(
+        category: VodCategory,
+        kind: ContentKind,
+    ): SearchIndexEntity? {
+        val film = toEntity(sortOrder = 0)?.toModel() ?: return null
+        if (film.name.isBlank()) return null
+        return SearchIndexEntity(
+            key = indexKey(kind, film.id),
+            kind = kind.name,
+            contentId = film.id,
+            name = film.name,
+            nameLower = film.name.lowercase(),
+            subtitle = category.name,
+            categoryId = category.id,
+            posterUrl = film.posterUrl,
+            iconUrl = null,
+        )
     }
 
-    suspend fun resetProgress() = withContext(ioDispatcher) {
-        dao.clearProgress()
-    }
-
-    suspend fun clear() = withContext(ioDispatcher) {
-        dao.clearIndex()
-        dao.clearProgress()
+    /** As [VodStreamDto.toSearchRow], for a series. */
+    private fun SeriesDto.toSearchRow(
+        category: VodCategory,
+        kind: ContentKind,
+    ): SearchIndexEntity? {
+        val show = toEntity(sortOrder = 0)?.toModel() ?: return null
+        if (show.name.isBlank()) return null
+        return SearchIndexEntity(
+            key = indexKey(kind, show.id),
+            kind = kind.name,
+            contentId = show.id,
+            name = show.name,
+            nameLower = show.name.lowercase(),
+            subtitle = category.name,
+            categoryId = category.id,
+            posterUrl = show.posterUrl,
+            iconUrl = null,
+        )
     }
 
     private fun SearchIndexEntity.toHit() = SearchHit(

@@ -7,6 +7,7 @@ import com.fourj.iptv.data.local.replaceMoviesInCategory
 import com.fourj.iptv.data.local.replaceSeriesInCategory
 import com.fourj.iptv.data.local.SeriesEntity
 import com.fourj.iptv.data.local.VodCategoryEntity
+import com.fourj.iptv.data.local.VodCategorySyncEntity
 import com.fourj.iptv.data.local.VodDatabase
 import com.fourj.iptv.data.remote.retrying
 import com.fourj.iptv.data.remote.runCatchingCancellable
@@ -79,6 +80,16 @@ class VodRepository(
     /**
      * Load a category's contents, replacing what was cached for it.
      *
+     * **A shelf already fetched is not fetched again.** This is the whole reason [VodSyncDao]
+     * exists. On-demand shelves were re-downloaded on every visit, and a film shelf on this provider
+     * answers with megabytes - the panel ignores `limit` and `start` outright, so there is no way to
+     * ask it for a smaller slice and the only way to avoid the download is to not make it.
+     *
+     * There is no timer, deliberately. The panel serves no `ETag`, no `Last-Modified` and no
+     * "changed since" parameter - all verified against it - so nothing can be revalidated cheaply
+     * and any schedule would be a guess that costs a large download whether or not anything changed.
+     * Cached indefinitely, refreshed on request, with the age on screen.
+     *
      * Films and series are fetched separately because they are separate namespaces, even though a
      * panel may present them under one category list. Only the table for [kind] is touched: the two
      * namespaces can share a category id, so clearing both would empty a series shelf because a
@@ -88,9 +99,17 @@ class VodRepository(
      * rather than lingering forever. An empty response therefore clears the category - a genuine
      * "this shelf is now empty" is different from a failed fetch, and only the latter throws.
      */
-    suspend fun ensureCategoryLoaded(categoryId: String, kind: ContentKind): Result<Unit> =
+    suspend fun ensureCategoryLoaded(
+        categoryId: String,
+        kind: ContentKind,
+        force: Boolean = false,
+    ): Result<Unit> =
         withContext(ioDispatcher) {
             runCatchingCancellable {
+                if (!force && database.vodSyncDao().isSynced(categoryId, kind.name)) {
+                    return@runCatchingCancellable
+                }
+
                 if (kind == ContentKind.MOVIE) {
                     val rows = retrying(label = "get_vod_streams[$categoryId]") {
                         api.vodStreams(categoryId = categoryId)
@@ -102,8 +121,25 @@ class VodRepository(
                     }.getOrThrow().mapIndexedNotNull { index, dto -> dto.toEntity(index) }
                     database.replaceSeriesInCategory(categoryId, rows)
                 }
+
+                // Recorded only after the write succeeded. Marking it before would leave a shelf
+                // that failed to download permanently empty and permanently "already synced", which
+                // is indistinguishable from a provider with no films in that category.
+                database.vodSyncDao().markSynced(
+                    VodCategorySyncEntity(categoryId, kind.name, System.currentTimeMillis()),
+                )
             }
         }
+
+    /** When this shelf was last fetched, or null if it never has been. */
+    suspend fun categorySyncedAt(categoryId: String, kind: ContentKind): Long? =
+        withContext(ioDispatcher) {
+            database.vodSyncDao().syncedAt(categoryId, kind.name)
+        }
+
+    /** Re-fetch this shelf now, whatever the cache says. Backs the on-screen refresh control. */
+    suspend fun refreshCategory(categoryId: String, kind: ContentKind): Result<Unit> =
+        ensureCategoryLoaded(categoryId, kind, force = true)
 
     fun observeMovies(categoryId: String): Flow<List<Movie>> =
         database.vodDao().observeMovies(categoryId)
@@ -129,18 +165,6 @@ class VodRepository(
             val shows = database.vodDao().vodCategoriesOnce(ContentKind.SERIES.name)
             (films + shows).map { VodCategory(it.categoryId, it.categoryName) }
         }.getOrDefault(emptyList())
-    }
-
-    /** Every film fetched so far, for indexing shelves the viewer has already browsed. */
-    suspend fun cachedMovies(): List<Movie> = withContext(ioDispatcher) {
-        runCatching { database.vodDao().allMoviesOnce().map { it.toModel() } }
-            .getOrDefault(emptyList())
-    }
-
-    /** Every series fetched so far, for indexing shelves the viewer has already browsed. */
-    suspend fun cachedSeries(): List<Series> = withContext(ioDispatcher) {
-        runCatching { database.vodDao().allSeriesOnce().map { it.toModel() } }
-            .getOrDefault(emptyList())
     }
 
     suspend fun findMovie(movieId: Int): Movie? = withContext(ioDispatcher) {
@@ -211,19 +235,6 @@ class VodRepository(
                 }
                 .sortedBy { it.number }
         }
-    }
-
-    fun observeEpisodes(seriesId: Int, seasonNumber: Int): Flow<List<Episode>> =
-        database.vodDao().observeEpisodesInSeason(seriesId, seasonNumber)
-            .map { rows -> rows.map { it.toModel() } }
-            .flowOn(ioDispatcher)
-
-    suspend fun cachedSeasons(seriesId: Int): List<Season> = withContext(ioDispatcher) {
-        database.vodDao().episodesFor(seriesId)
-            .groupBy { it.seasonNumber }
-            .keys
-            .sorted()
-            .map { Season(id = "$seriesId:$it", number = it, name = "Season $it", posterUrl = null) }
     }
 
     suspend fun cachedEpisodes(seriesId: Int, seasonNumber: Int): List<Episode> =

@@ -108,3 +108,22 @@ data class FavouriteEntity(
     val posterUrl: String?,
     val addedAtMillis: Long,
 )
+
+/**
+ * Records that one on-demand shelf has been fetched, and when.
+ *
+ * The key is (categoryId, kind) for the same reason [VodCategoryEntity] uses it: a film shelf and a
+ * series shelf can share a numeric id, and recording one as having loaded the other would leave a
+ * shelf permanently empty with nothing to indicate why.
+ *
+ * [syncedAtMillis] is kept even though nothing expires on a timer. It is what lets the screen say
+ * how old a shelf is, which is the honest substitute for automatic refreshing on a panel that offers
+ * no way to ask what has changed - the viewer can see the cache is stale and refresh it themselves,
+ * rather than the app guessing a schedule and paying for a large download on their behalf.
+ */
+@Entity(tableName = "vod_category_sync", primaryKeys = ["categoryId", "kind"])
+data class VodCategorySyncEntity(
+    val categoryId: String,
+    val kind: String,
+    val syncedAtMillis: Long,
+)

@@ -16,20 +16,12 @@ interface VodDao {
     @Query("SELECT * FROM vod_categories WHERE kind = :kind ORDER BY sortOrder ASC")
     suspend fun vodCategoriesOnce(kind: String): List<VodCategoryEntity>
 
-    @Query("SELECT * FROM movies ORDER BY sortOrder ASC")
-    suspend fun allMoviesOnce(): List<MovieEntity>
-
-    @Query("SELECT * FROM series ORDER BY sortOrder ASC")
-    suspend fun allSeriesOnce(): List<SeriesEntity>
-
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertVodCategories(rows: List<VodCategoryEntity>)
 
     @Query("SELECT * FROM movies WHERE categoryId = :categoryId ORDER BY sortOrder ASC")
     fun observeMovies(categoryId: String): Flow<List<MovieEntity>>
 
-    @Query("SELECT * FROM movies ORDER BY sortOrder ASC")
-    fun observeAllMovies(): Flow<List<MovieEntity>>
 
     @Query("SELECT * FROM movies WHERE movieId = :movieId LIMIT 1")
     suspend fun findMovie(movieId: Int): MovieEntity?
@@ -68,6 +60,28 @@ interface VodDao {
     suspend fun clearEpisodes(seriesId: Int)
 }
 
+/**
+ * Which on-demand shelves have been fetched.
+ *
+ * The live database has had its equivalent since v1; see [VodCategorySyncEntity] for why films and
+ * series needed one too.
+ */
+@Dao
+interface VodSyncDao {
+
+    @Query("SELECT EXISTS(SELECT 1 FROM vod_category_sync WHERE categoryId = :categoryId AND kind = :kind)")
+    suspend fun isSynced(categoryId: String, kind: String): Boolean
+
+    @Query("SELECT syncedAtMillis FROM vod_category_sync WHERE categoryId = :categoryId AND kind = :kind LIMIT 1")
+    suspend fun syncedAt(categoryId: String, kind: String): Long?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun markSynced(state: VodCategorySyncEntity)
+
+    @Query("DELETE FROM vod_category_sync")
+    suspend fun clear()
+}
+
 @Dao
 interface LibraryDao {
 
@@ -83,8 +97,6 @@ interface LibraryDao {
     @Query("DELETE FROM playback_progress WHERE contentKey = :contentKey")
     suspend fun clearProgress(contentKey: String)
 
-    @Query("DELETE FROM playback_progress")
-    suspend fun clearAllProgress()
 
     @Query("SELECT * FROM favourites ORDER BY addedAtMillis DESC")
     fun observeFavourites(): Flow<List<FavouriteEntity>>
@@ -98,6 +110,4 @@ interface LibraryDao {
     @Query("DELETE FROM favourites WHERE contentKey = :contentKey")
     suspend fun removeFavourite(contentKey: String)
 
-    @Query("DELETE FROM favourites")
-    suspend fun clearFavourites()
 }

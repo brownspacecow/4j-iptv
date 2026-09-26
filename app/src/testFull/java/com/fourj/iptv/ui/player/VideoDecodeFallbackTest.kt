@@ -1,7 +1,6 @@
 package com.fourj.iptv.ui.player
 
 import androidx.media3.common.PlaybackException
-import androidx.media3.exoplayer.ExoPlaybackException
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -20,15 +19,12 @@ import org.junit.Test
  */
 class VideoDecodeFallbackTest {
 
-    private val renderer = ExoPlaybackException.TYPE_RENDERER
-
     @Test
     fun `retries when the hardware video decoder fails to initialise`() {
         assertTrue(
             shouldRetryWithSoftwareVideo(
                 errorCode = PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
-                exceptionType = renderer,
-                rendererName = "MediaCodecVideoRenderer",
+                isVideoRenderer = true,
             ),
         )
     }
@@ -38,8 +34,7 @@ class VideoDecodeFallbackTest {
         assertTrue(
             shouldRetryWithSoftwareVideo(
                 errorCode = PlaybackException.ERROR_CODE_DECODING_FAILED,
-                exceptionType = renderer,
-                rendererName = "MediaCodecVideoRenderer",
+                isVideoRenderer = true,
             ),
         )
     }
@@ -51,8 +46,7 @@ class VideoDecodeFallbackTest {
         assertTrue(
             shouldRetryWithSoftwareVideo(
                 errorCode = PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES,
-                exceptionType = renderer,
-                rendererName = "MediaCodecVideoRenderer",
+                isVideoRenderer = true,
             ),
         )
     }
@@ -64,8 +58,7 @@ class VideoDecodeFallbackTest {
         assertFalse(
             shouldRetryWithSoftwareVideo(
                 errorCode = PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
-                exceptionType = renderer,
-                rendererName = "MediaCodecAudioRenderer",
+                isVideoRenderer = false,
             ),
         )
     }
@@ -77,8 +70,7 @@ class VideoDecodeFallbackTest {
         assertFalse(
             shouldRetryWithSoftwareVideo(
                 errorCode = PlaybackException.ERROR_CODE_DECODING_RESOURCES_RECLAIMED,
-                exceptionType = renderer,
-                rendererName = "MediaCodecVideoRenderer",
+                isVideoRenderer = true,
             ),
         )
     }
@@ -88,19 +80,7 @@ class VideoDecodeFallbackTest {
         assertFalse(
             shouldRetryWithSoftwareVideo(
                 errorCode = PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
-                exceptionType = ExoPlaybackException.TYPE_SOURCE,
-                rendererName = null,
-            ),
-        )
-    }
-
-    @Test
-    fun `does not retry when there is no renderer to attribute the failure to`() {
-        assertFalse(
-            shouldRetryWithSoftwareVideo(
-                errorCode = PlaybackException.ERROR_CODE_DECODING_FAILED,
-                exceptionType = renderer,
-                rendererName = null,
+                isVideoRenderer = false,
             ),
         )
     }
@@ -112,8 +92,7 @@ class VideoDecodeFallbackTest {
         assertTrue(
             shouldRetryWithSoftwareVideo(
                 errorCode = PlaybackException.ERROR_CODE_DECODING_FAILED,
-                exceptionType = renderer,
-                rendererName = "FfmpegVideoRenderer",
+                isVideoRenderer = true,
             ),
         )
     }

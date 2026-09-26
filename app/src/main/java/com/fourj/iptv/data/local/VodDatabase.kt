@@ -21,13 +21,15 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         EpisodeEntity::class,
         PlaybackProgressEntity::class,
         FavouriteEntity::class,
+        VodCategorySyncEntity::class,
     ],
-    version = 3,
+    version = 4,
     exportSchema = true,
 )
 abstract class VodDatabase : RoomDatabase() {
     abstract fun vodDao(): VodDao
     abstract fun libraryDao(): LibraryDao
+    abstract fun vodSyncDao(): VodSyncDao
 }
 
 /**
@@ -73,6 +75,33 @@ val VOD_MIGRATION_1_2 = object : Migration(1, 2) {
 val VOD_MIGRATION_2_3 = object : Migration(2, 3) {
     override fun migrate(db: SupportSQLiteDatabase) {
         db.execSQL("ALTER TABLE `episodes` ADD COLUMN `streamId` TEXT")
+    }
+}
+
+/**
+ * v3 -> v4: a new `vod_category_sync` table recording which shelves have been fetched.
+ *
+ * Purely additive, and every existing row is kept. Films and series already cached stay cached, and
+ * every shelf is simply treated as not-yet-fetched, so the first visit to each one loads it - the
+ * same as before this table existed.
+ *
+ * It exists because on-demand shelves were being re-downloaded on every visit. A film category on
+ * this provider answers with megabytes, and the panel's `limit` and `start` parameters are ignored
+ * outright, so there is no way to ask it for a smaller slice - the only way to avoid the download is
+ * to avoid making it. Live TV has had this table since v1; films and series simply did not.
+ */
+val VOD_MIGRATION_3_4 = object : Migration(3, 4) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `vod_category_sync` (
+                `categoryId` TEXT NOT NULL,
+                `kind` TEXT NOT NULL,
+                `syncedAtMillis` INTEGER NOT NULL,
+                PRIMARY KEY(`categoryId`, `kind`)
+            )
+            """.trimIndent(),
+        )
     }
 }
 

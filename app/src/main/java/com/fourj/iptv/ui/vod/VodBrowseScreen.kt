@@ -56,6 +56,7 @@ fun VodBrowseScreen(
     onResumeClick: (com.fourj.iptv.domain.model.PlaybackProgress) -> Unit,
     onMovieClick: (Movie) -> Unit,
     onSeriesClick: (Series) -> Unit,
+    onRefresh: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val uiScale = LocalUiScale.current
@@ -93,6 +94,17 @@ fun VodBrowseScreen(
                     }
                 }
             }
+
+            Spacer(Modifier.height(12.dp))
+
+            // Cache age and a deliberate refresh, on the same row and directly under the category
+            // chips so the D-pad reaches it: the chips are full width, and anything pushed to the
+            // right edge below them is a long way from the focused element and gets stepped over.
+            ShelfStatusRow(
+                syncedAtMillis = state.categorySyncedAtMillis,
+                isRefreshing = state.isRefreshing,
+                onRefresh = onRefresh,
+            )
 
             Spacer(Modifier.height(12.dp))
 
@@ -193,6 +205,82 @@ private fun SeriesCard(series: Series, onClick: () -> Unit, modifier: Modifier =
         }
     }
 }
+
+/**
+ * How old this shelf's cached copy is, and a button to replace it.
+ *
+ * **Why the age is shown rather than a timer doing the work.** The panel serves no `ETag`, no
+ * `Last-Modified` and no "changed since" parameter - all checked against it - and it ignores `limit`
+ * and `start` as well, so a shelf is megabytes and there is no cheaper way to find out whether it
+ * changed. Any automatic schedule would therefore be a guess that costs a large download whether or
+ * not anything actually changed.
+ *
+ * So the cache is trusted until someone says otherwise, and this row is how they say it. Saying how
+ * old the copy is matters as much as offering the refresh: a shelf that quietly stopped updating
+ * would otherwise be indistinguishable from one that is genuinely current, and the viewer's only
+ * clue would be a film they expected to be missing.
+ */
+@Composable
+private fun ShelfStatusRow(
+    syncedAtMillis: Long?,
+    isRefreshing: Boolean,
+    onRefresh: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = LocalUiScale.current.horizontalMarginDp.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text(
+            text = when {
+                isRefreshing -> "Refreshing from your provider…"
+                syncedAtMillis == null -> "Not downloaded yet"
+                else -> "Cached copy from ${describeCacheAge(syncedAtMillis)}"
+            },
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        if (!isRefreshing) {
+            Button(
+                onClick = onRefresh,
+                scale = androidx.tv.material3.ButtonDefaults.scale(focusedScale = 1.08f),
+            ) {
+                Text("Refresh")
+            }
+        }
+    }
+}
+
+/**
+ * How long ago something happened, in words a person would use.
+ *
+ * Deliberately vague past a week. "23 days ago" is precise and useless - at that point the useful
+ * statement is simply that it is old, and a precise figure implies a freshness the app cannot
+ * actually vouch for.
+ */
+internal fun describeCacheAge(syncedAtMillis: Long, nowMillis: Long = System.currentTimeMillis()): String {
+    val elapsedMinutes = (nowMillis - syncedAtMillis) / 60_000
+    return when {
+        elapsedMinutes < 1 -> "moments ago"
+        elapsedMinutes < 60 -> "$elapsedMinutes minute${plural(elapsedMinutes)} ago"
+        elapsedMinutes < 60 * 24 -> {
+            val hours = elapsedMinutes / 60
+            "$hours hour${plural(hours)} ago"
+        }
+        elapsedMinutes < 60 * 24 * 7 -> {
+            val days = elapsedMinutes / (60 * 24)
+            "$days day${plural(days)} ago"
+        }
+        else -> "over a week ago"
+    }
+}
+
+private fun plural(value: Long): String = if (value == 1L) "" else "s"
 
 @Composable
 private fun Poster(url: String?, modifier: Modifier = Modifier) {

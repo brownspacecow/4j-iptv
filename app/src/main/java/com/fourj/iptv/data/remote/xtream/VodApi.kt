@@ -30,12 +30,6 @@ interface VodApi {
     ): List<VodStreamDto>
 
     @GET("player_api.php")
-    suspend fun vodInfo(
-        @Query("action") action: String = "get_vod_info",
-        @Query("vod_id") vodId: Int,
-    ): VodStreamDto?
-
-    @GET("player_api.php")
     suspend fun seriesCategories(
         @Query("action") action: String = "get_series_categories",
     ): List<SeriesCategoryDto>

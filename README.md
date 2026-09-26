@@ -12,7 +12,7 @@ Live TV with a programme guide, plus films and series with resume, and search ac
 |---|---|
 | Features | Live TV, EPG, films, series, search, continue watching, favourites |
 | Builds | `assembleFullDebug`, `assembleLiteDebug` |
-| Tests | 141 unit tests, all passing |
+| Tests | 152 unit tests, all passing |
 | Verified on hardware | **No** — see [Honest limitations](#honest-limitations) |
 
 ## What works
@@ -54,7 +54,8 @@ Live TV with a programme guide, plus films and series with resume, and search ac
 - **Panel-required headers** (`User-Agent`, `Referer`) are forwarded to the player. A noticeable
   share of channels answer `403` without them.
 - **Cached catalogues.** Categories and contents load once, then come from a local Room database, so
-  browsing is instant and survives a provider outage.
+  browsing is instant and survives a provider outage. See
+  [How caching works, and why there is no timer](#how-caching-works-and-why-there-is-no-timer).
 - **Encrypted credentials.** AES-256-GCM under a non-exportable Android Keystore key. App backup is
   disabled so the ciphertext is never copied off the device.
 - **Survives bad providers.** Large JSON responses are routinely truncated in transit; those requests
@@ -87,7 +88,7 @@ sdk.dir=/path/to/Android/sdk
 Then:
 
 ```bash
-./gradlew :app:testFullDebugUnitTest     # 141 unit tests
+./gradlew :app:testFullDebugUnitTest     # 152 unit tests
 ./gradlew :app:assembleFullDebug         # APK with software audio + video fallback (~43 MB debug)
 ./gradlew :app:assembleLiteDebug         # smaller APK, no software decoders
 ```
@@ -173,6 +174,37 @@ tool you can trust and one that quietly lies about what it knows.
 That last number is the honest limit of this feature: on a provider that truncates as readily as
 this one, roughly a third of the catalogue cannot be indexed at all. It is a property of the panel,
 not something the app can code around.
+
+---
+
+## How caching works, and why there is no timer
+
+Every shelf is downloaded **once** and then served from the database, indefinitely. A film or series
+shelf is not re-fetched when you come back to it, switch tabs, or switch shelves and return.
+
+**Why no expiry.** The panel this was built against offers no way to ask what has changed. Checked
+directly against it:
+
+- `get_vod_categories`, `get_vod_streams`, `get_series` and `get_live_streams` all return
+  **no `ETag` and no `Last-Modified`**, so a conditional request cannot come back `304`.
+- Passing `search` to `get_vod_streams` or `get_series` is **ignored** — the whole catalogue comes
+  back, which is why search is [local](#search-and-why-it-is-local).
+- `limit` and `start` are **ignored too**, per category: `limit=5&start=0`, `start=5` and `start=500`
+  all return byte-identical rows. A shelf cannot be asked for a smaller slice.
+
+So a shelf here is megabytes — a film category answers with about 20 MB — and the only way to avoid
+the download is to not make it. Any automatic schedule would be a guess that costs a large download
+whether or not anything actually changed.
+
+**Refreshing is therefore deliberate.** Each shelf shows how old its cached copy is and has a
+**Refresh** button that re-fetches it on demand. The age is on screen because a shelf that quietly
+stopped updating would otherwise be indistinguishable from one that is current, and the only clue
+would be a film the viewer expected to be missing.
+
+**A failed fetch is not remembered as done.** The shelf is recorded as downloaded only after the
+write succeeds, so a download that was cut off leaves the shelf to be retried rather than
+permanently empty and permanently "already downloaded" — which looks exactly like a provider with no
+films in it.
 
 ---
 

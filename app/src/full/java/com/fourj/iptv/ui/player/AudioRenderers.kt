@@ -113,33 +113,21 @@ internal fun videoDecodeFailureMessage(): String =
  * having to build an `ExoPlaybackException`, which needs a media period id and an Android runtime.
  */
 @UnstableApi
-internal fun isVideoDecodeFailure(error: PlaybackException): Boolean {
-    val exo = error as? ExoPlaybackException ?: return false
-    return shouldRetryWithSoftwareVideo(error.errorCode, exo.type, exo.rendererName)
-}
+internal fun isVideoDecodeFailure(error: PlaybackException): Boolean =
+    shouldRetryWithSoftwareVideo(error.errorCode, isVideoRendererError(error))
 
 /**
  * The decision, on plain values.
  *
  * The error code alone cannot tell video from audio - both raise the same decoder codes - so the
- * renderer is checked too. `rendererName` is what distinguishes them: `MediaCodecVideoRenderer`
- * and `FfmpegVideoRenderer` against `MediaCodecAudioRenderer`.
- *
- * This was written after a version that matched on the exception *message* and was handed
- * `errorCodeName` instead of the exception. It never fired once, silently, and the fallback looked
- * like it was working because the software decoder was appended - so the bug was invisible until a
- * real HEVC episode failed. Hence the plain parameters: the field that matters is now a parameter
- * and cannot be passed wrongly by accident.
+ * renderer is checked too, by the same [isVideoRendererError] the error message uses. Splitting
+ * this into plain parameters keeps it testable without building an `ExoPlaybackException`, which
+ * needs a media period id and an Android runtime.
  */
 internal fun shouldRetryWithSoftwareVideo(
     errorCode: Int,
-    exceptionType: Int,
-    rendererName: String?,
-): Boolean {
-    if (errorCode !in SOFTWARE_VIDEO_WORTH_TRYING) return false
-    if (exceptionType != ExoPlaybackException.TYPE_RENDERER) return false
-    return rendererName?.contains("video", ignoreCase = true) == true
-}
+    isVideoRenderer: Boolean,
+): Boolean = isVideoRenderer && errorCode in SOFTWARE_VIDEO_WORTH_TRYING
 
 /**
  * Decoder failures worth retrying on the software decoder.

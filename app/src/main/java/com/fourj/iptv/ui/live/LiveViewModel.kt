@@ -54,6 +54,9 @@ private data class ChannelLoad(
     val loading: Boolean = false,
 )
 
+// `flatMapLatest` is still marked experimental, so the category load opts in rather than leaving
+// the warning to be rediscovered on every build.
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class LiveViewModel(
     private val repository: LiveRepository,
     private val epgRepository: EpgRepository,
@@ -241,13 +244,6 @@ class LiveViewModel(
     fun requestHeaders(channel: LiveChannel): Map<String, String> = buildMap {
         channel.httpUserAgent?.takeIf { it.isNotBlank() }?.let { put("User-Agent", it) }
         channel.httpReferrer?.takeIf { it.isNotBlank() }?.let { put("Referer", it) }
-    }
-
-    fun signOut(onDone: () -> Unit) {
-        viewModelScope.launch {
-            repository.clearCache()
-            onDone()
-        }
     }
 
     companion object {

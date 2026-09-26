@@ -81,17 +81,11 @@ interface SearchIndexDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertAll(rows: List<SearchIndexEntity>)
 
-    @Query("SELECT COUNT(*) FROM search_index")
-    fun observeTotalIndexed(): Flow<Int>
-
     @Query("SELECT COUNT(*) FROM search_index WHERE kind = :kind")
     fun observeIndexedCount(kind: String): Flow<Int>
 
     @Query("SELECT COUNT(*) FROM search_index WHERE kind = :kind")
     suspend fun indexedCount(kind: String): Int
-
-    @Query("SELECT COUNT(DISTINCT categoryId) FROM search_index WHERE kind = :kind AND categoryId IS NOT NULL")
-    fun observeIndexedCategories(kind: String): Flow<Int>
 
     /**
      * Substring search, best match first.
@@ -119,9 +113,6 @@ interface SearchIndexDao {
         """,
     )
     suspend fun search(term: String, limit: Int): List<SearchIndexEntity>
-
-    @Query("SELECT * FROM search_index WHERE key IN (:keys)")
-    suspend fun findByKeys(keys: List<String>): List<SearchIndexEntity>
 
     @Query("SELECT * FROM index_progress WHERE scope = :scope LIMIT 1")
     suspend fun progressFor(scope: String): IndexProgressEntity?

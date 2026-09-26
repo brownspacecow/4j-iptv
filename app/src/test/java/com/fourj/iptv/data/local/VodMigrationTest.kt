@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -30,10 +31,6 @@ class VodMigrationTest {
     private val fileName = "vod-migration-test.db"
 
     @Before
-    fun removeDatabase() {
-        context.deleteDatabase(fileName)
-    }
-
     @After
     fun tearDown() {
         context.deleteDatabase(fileName)
@@ -136,7 +133,7 @@ class VodMigrationTest {
      */
     private fun openMigrated(): VodDatabase =
         Room.databaseBuilder(context, VodDatabase::class.java, fileName)
-            .addMigrations(VOD_MIGRATION_1_2, VOD_MIGRATION_2_3)
+            .addMigrations(VOD_MIGRATION_1_2, VOD_MIGRATION_2_3, VOD_MIGRATION_3_4)
             .allowMainThreadQueries()
             .build()
 
@@ -246,6 +243,42 @@ class VodMigrationTest {
             assertEquals("An Episode", episodes.single().title)
             // Null until the series is fetched again, which repopulates it.
             assertEquals(null, episodes.single().streamId)
+        } finally {
+            db.close()
+        }
+    }
+
+    /**
+     * v3 -> v4 adds the shelf sync table, and nothing else moves.
+     *
+     * The table is new and empty, so every shelf is treated as not-yet-downloaded and loads on first
+     * visit. The point of the test is the other half: films, series, favourites and progress all
+     * survive, because a schema change is not a licence to lose what someone watched.
+     */
+    @Test
+    fun `migrating from version 3 adds the shelf sync table and keeps the cache`() = runTest {
+        val version2 = createVersion2Database()
+        version2.execSQL(
+            "INSERT INTO movies (movieId,name,categoryId,sortOrder) VALUES (500,'A Film','10',0)",
+        )
+        version2.execSQL(
+            "INSERT INTO favourites (contentKey,kind,contentId,name,addedAtMillis) " +
+                "VALUES ('MOVIE:500','MOVIE',500,'A Film',1)",
+        )
+        VOD_MIGRATION_2_3.migrate(version2)
+        version2.version = 3
+        VOD_MIGRATION_3_4.migrate(version2)
+        version2.version = 4
+        version2.close()
+
+        val db = openMigrated()
+        try {
+            // The cached film is still there...
+            assertNotNull(db.vodDao().findMovie(500))
+            // ...the favourite is still there...
+            assertEquals(1, db.libraryDao().favouriteFor("MOVIE:500")?.let { 1 })
+            // ...and nothing claims to have been synced, so every shelf still loads on first visit.
+            assertEquals(false, db.vodSyncDao().isSynced("10", ContentKind.MOVIE.name))
         } finally {
             db.close()
         }

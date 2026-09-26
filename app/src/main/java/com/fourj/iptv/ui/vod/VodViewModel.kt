@@ -39,6 +39,17 @@ data class VodUiState(
     val series: List<Series> = emptyList(),
     val isLoadingCategories: Boolean = true,
     val isLoadingItems: Boolean = false,
+    /** A deliberate refresh is running, as opposed to a first load. */
+    val isRefreshing: Boolean = false,
+    /**
+     * When the current shelf was last fetched, or null if it never has been.
+     *
+     * Surfaced because the cache does not expire and the viewer is the one who decides when to
+     * refresh. Showing the age is what makes an indefinitely-cached shelf honest rather than
+     * suspicious - without it, a shelf that quietly stopped updating would be indistinguishable
+     * from one that is genuinely up to date.
+     */
+    val categorySyncedAtMillis: Long? = null,
     val error: String? = null,
     val query: String = "",
     val detail: DetailTarget? = null,
@@ -191,7 +202,15 @@ class VodViewModel(
                     } else {
                         flow {
                             emit(ContentLoad(loading = true))
+                            // Reads the cache first and only fetches if the shelf is not already
+                            // recorded as synced, so switching back to a shelf is instant and free.
                             repository.ensureCategoryLoaded(categoryId, kind)
+                            emit(
+                                ContentLoad(
+                                    kind = kind,
+                                    syncedAtMillis = repository.categorySyncedAt(categoryId, kind),
+                                ),
+                            )
                             emitAll(
                                 if (kind == ContentKind.MOVIE) {
                                     repository.observeMovies(categoryId)
@@ -210,6 +229,11 @@ class VodViewModel(
                             movies = load.movies,
                             series = load.series,
                             isLoadingItems = load.loading,
+                            // Only overwritten when the load actually reported a timestamp. The
+                            // rows arriving from the database afterwards carry none, and blanking
+                            // the age on every emission would make the label flicker and then vanish.
+                            categorySyncedAtMillis = load.syncedAtMillis
+                                ?: it.categorySyncedAtMillis,
                             error = null,
                         )
                     }
@@ -250,6 +274,35 @@ class VodViewModel(
     }
     fun selectCategory(categoryId: String) {
         _state.update { it.copy(selectedCategoryId = categoryId) }
+    }
+
+    /**
+     * Re-fetch this shelf from the provider, ignoring the cache.
+     *
+     * The escape hatch that replaces automatic change detection. The panel serves no `ETag`, no
+     * `Last-Modified` and no "changed since" parameter, so there is no way for the app to find out
+     * what has changed without downloading the shelf and looking - and a shelf here is megabytes,
+     * because the panel ignores `limit` and `start` too. Caching indefinitely and refreshing on
+     * request is the only version of this that does not quietly spend the viewer's data on a guess.
+     */
+    fun refreshCategory(categoryId: String) {
+        val kind = _state.value.section.kind
+        viewModelScope.launch {
+            _state.update { it.copy(isRefreshing = true, error = null) }
+            repository.refreshCategory(categoryId, kind)
+                .onSuccess { loadCacheAge(categoryId, kind) }
+                .onFailure { throwable ->
+                    _state.update { it.copy(error = throwable.toUserMessage()) }
+                }
+            _state.update { it.copy(isRefreshing = false) }
+        }
+    }
+
+    private fun loadCacheAge(categoryId: String, kind: ContentKind) {
+        viewModelScope.launch {
+            val syncedAt = repository.categorySyncedAt(categoryId, kind)
+            _state.update { it.copy(categorySyncedAtMillis = syncedAt) }
+        }
     }
 
     fun onQueryChange(value: String) = _state.update { it.copy(query = value) }
@@ -465,5 +518,7 @@ private data class ContentLoad(
      * category label on every one of those titles.
      */
     val kind: ContentKind? = null,
+    /** When the shelf was fetched, carried on the first emission only. See [VodUiState]. */
+    val syncedAtMillis: Long? = null,
 )
 

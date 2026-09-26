@@ -64,13 +64,16 @@ internal fun describePlaybackError(error: PlaybackException): String {
 }
 
 /**
- * Whether a decode failure came from the video renderer rather than the audio one.
+ * Whether a failure came from the video renderer rather than the audio one.
  *
  * Both raise the same error codes, so the code cannot tell them apart - only the renderer can. A
  * previous version of this matched on the exception message, which happened to work, but the
  * renderer name is a real field and does not depend on how a message is worded.
+ *
+ * Shared with the `full` flavor's software-video fallback rather than written twice: the two
+ * answers have to agree, and a `main` copy the flavor cannot see is a copy that will drift.
  */
-private fun isVideoRendererError(error: PlaybackException): Boolean {
+internal fun isVideoRendererError(error: PlaybackException): Boolean {
     val exo = error as? ExoPlaybackException ?: return false
     return exo.type == ExoPlaybackException.TYPE_RENDERER &&
         exo.rendererName?.contains("video", ignoreCase = true) == true

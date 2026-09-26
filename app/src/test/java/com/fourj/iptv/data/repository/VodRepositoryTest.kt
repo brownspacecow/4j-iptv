@@ -153,7 +153,9 @@ class VodRepositoryTest {
         enqueue(VOD_STREAMS)
         repository.ensureCategoryLoaded("10", ContentKind.MOVIE)
         enqueue("""[{"num":1,"name":"Only Film Now","stream_id":9999,"category_id":"10"}]""")
-        repository.ensureCategoryLoaded("10", ContentKind.MOVIE)
+        // Forced, because an already-fetched shelf is now served from the cache. The behaviour under
+        // test is what happens when a shelf *is* re-fetched, and the cache guard has its own tests.
+        repository.refreshCategory("10", ContentKind.MOVIE)
 
         val movies = repository.observeMovies("10").first()
         assertEquals(listOf(9999), movies.map { it.id })

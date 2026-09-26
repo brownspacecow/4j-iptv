@@ -8,6 +8,7 @@ import com.fourj.iptv.data.local.MIGRATION_1_2
 import com.fourj.iptv.data.local.SearchIndexDatabase
 import com.fourj.iptv.data.local.VOD_MIGRATION_1_2
 import com.fourj.iptv.data.local.VOD_MIGRATION_2_3
+import com.fourj.iptv.data.local.VOD_MIGRATION_3_4
 import com.fourj.iptv.data.local.VodDatabase
 import com.fourj.iptv.data.remote.XtreamNetwork
 import com.fourj.iptv.data.repository.EpgRepository
@@ -64,7 +65,7 @@ class AppContainer(context: Context) {
 
     private val vodDatabase: VodDatabase by lazy {
         Room.databaseBuilder(appContext, VodDatabase::class.java, VOD_DATABASE_NAME)
-            .addMigrations(VOD_MIGRATION_1_2, VOD_MIGRATION_2_3)
+            .addMigrations(VOD_MIGRATION_1_2, VOD_MIGRATION_2_3, VOD_MIGRATION_3_4)
             // Deliberately no fallbackToDestructiveMigration: wiping a viewer's favourites and
             // continue-watching because a schema changed would be a real loss, not a convenience.
             .build()
