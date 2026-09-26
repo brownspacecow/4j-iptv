@@ -10,9 +10,11 @@ substitute for the licence texts, which ship with the software itself.
 
 ## Bundled in the `full` flavor only
 
-The `full` build flavor bundles software audio and video decoders derived from FFmpeg so that
-channels carrying AC-3 / E-AC-3 / DTS / MP2 produce sound on hardware that cannot decode them.
-The `lite` flavor contains none of this and depends only on the platform's own decoders.
+The `full` build flavor bundles software audio and video decoders derived from FFmpeg, so that
+content carrying AC-3 / E-AC-3 / DTS / MP2 audio or HEVC video still plays on hardware that
+cannot decode them. The video decoder is a fallback only—hardware decoding is always preferred,
+and FFmpeg is used when a hardware decoder has claimed a format and then failed on it. The `lite`
+flavor contains none of this and depends only on the platform's own decoders.
 
 ### FFmpeg
 
@@ -65,9 +67,17 @@ projects, each under its own licence as recorded in FFmpeg's `LICENSE.md`:
 
 ### AndroidX and Jetpack Compose
 
-All `androidx.*` and `androidx.tv.*` artefacts used by this project are licensed
-**Apache-2.0**. This includes Jetpack Compose, `androidx.tv:tv-material`, Room, Paging,
-Lifecycle, DataStore, Activity and Navigation.
+All `androidx.*` and `androidx.tv.*` artefacts this project depends on are licensed **Apache-2.0**.
+In use: `androidx.core:core-ktx`, `androidx.activity:activity-compose`, `androidx.lifecycle`
+(`runtime-compose`, `viewmodel-compose`), the Compose BOM with Compose UI / Foundation / Runtime /
+Material Icons, `androidx.tv:tv-material`, Room (`runtime`, `ktx`, `compiler`) and
+`androidx.datastore:datastore-preferences`.
+
+Not depended on, and so not distributed: `androidx.navigation`, `androidx.paging` and Material 3.
+The version catalog still carries entries for navigation-compose and compose-material3 as a
+record of the decision not to use them; neither is on any classpath. `androidx.tv:tv-foundation`
+is likewise unused, because the lists are built on the stable `LazyRow` / `LazyColumn` rather
+than the alpha-only `TvLazyRow` / `TvLazyColumn`.
 
 ### Kotlin and kotlinx
 
@@ -90,9 +100,10 @@ Lifecycle, DataStore, Activity and Navigation.
 - JUnit 4: **EPL-1.0**
 - Robolectric: **Apache-2.0**
 - MockWebServer: **Apache-2.0**
-- Okio (test): **Apache-2.0**
+- kotlinx-coroutines-test: **Apache-2.0**
 
-Test-only dependencies are not distributed in the APK.
+These are not distributed in the APK. Okio is listed under OkHttp above rather than
+here, because it ships in the build as a transitive dependency of OkHttp.
 
 ---
 
