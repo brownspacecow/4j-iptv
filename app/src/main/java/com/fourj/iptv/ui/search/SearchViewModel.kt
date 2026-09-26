@@ -12,7 +12,7 @@ import com.fourj.iptv.di.AppContainer
 import com.fourj.iptv.domain.model.ContentKind
 import com.fourj.iptv.domain.model.LiveCategory
 import com.fourj.iptv.domain.model.ProviderProfile
-import com.fourj.iptv.domain.model.VodCategory
+import com.fourj.iptv.domain.model.VodShelf
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -61,7 +61,7 @@ data class SearchUiState(
 class SearchViewModel(
     private val repository: SearchRepository,
     private val liveCategories: suspend () -> List<LiveCategory>,
-    private val vodCategories: suspend () -> List<VodCategory>,
+    private val vodShelves: suspend () -> List<VodShelf>,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(SearchUiState())
@@ -78,7 +78,7 @@ class SearchViewModel(
             // The category lists decide what "complete" means, and both are already cached by the
             // browse screens, so this costs a database read rather than a fetch.
             val live = runCatching { liveCategories() }.getOrDefault(emptyList())
-            val vod = runCatching { vodCategories() }.getOrDefault(emptyList())
+            val vod = runCatching { vodShelves() }.getOrDefault(emptyList())
             scopesTotal = live.size + vod.size
             refreshCoverage()
             // Counts change as shelves are browsed, so this stays subscribed rather than sampled
@@ -138,7 +138,7 @@ class SearchViewModel(
             _state.update { it.copy(isIndexing = true, indexError = null, indexedSoFar = 0) }
             try {
                 val live = runCatching { liveCategories() }.getOrDefault(emptyList())
-                val vod = runCatching { vodCategories() }.getOrDefault(emptyList())
+                val vod = runCatching { vodShelves() }.getOrDefault(emptyList())
                 scopesTotal = live.size + vod.size
                 val run = repository.indexEverything(live, vod) { done ->
                     _state.update { it.copy(indexedSoFar = done) }
@@ -196,7 +196,7 @@ class SearchViewModel(
                     return SearchViewModel(
                         repository = repository,
                         liveCategories = { container.liveRepository(profile).cachedCategories() },
-                        vodCategories = { container.vodRepository(profile).cachedVodCategories() },
+                        vodShelves = { container.vodRepository(profile).cachedShelves() },
                     ) as T
                 }
             }

@@ -27,6 +27,7 @@ import com.fourj.iptv.domain.model.ProviderProfile
 import com.fourj.iptv.domain.model.Season
 import com.fourj.iptv.domain.model.Series
 import com.fourj.iptv.domain.model.VodCategory
+import com.fourj.iptv.domain.model.VodShelf
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -152,18 +153,22 @@ class VodRepository(
             .flowOn(ioDispatcher)
 
     /**
-     * Every cached category, films and series together, in one list.
+     * Every cached shelf, with the namespace each one came from.
      *
-     * The search indexer needs the whole set at once to decide how much work "index everything" is.
-     * [kind] is dropped deliberately: the two kinds share the id space, and the caller tags each
-     * entry with the kind it came from, so a collision here would be caught rather than silently
-     * dropping one of the two.
+     * The kind is carried rather than left to the caller to work out. It is recorded correctly in
+     * `vod_categories` at fetch time, and the alternative - re-deriving it from the category id or
+     * name - is wrong: this panel's `category_id` is numeric (570, 401, 419) while "Series" appears
+     * only in the *name* ("Series-Documentary"), so anything testing the id for a "Series" prefix
+     * matches nothing and every series shelf gets paged as a film shelf instead.
      */
-    suspend fun cachedVodCategories(): List<VodCategory> = withContext(ioDispatcher) {
+    suspend fun cachedShelves(): List<VodShelf> = withContext(ioDispatcher) {
         runCatching {
             val films = database.vodDao().vodCategoriesOnce(ContentKind.MOVIE.name)
             val shows = database.vodDao().vodCategoriesOnce(ContentKind.SERIES.name)
-            (films + shows).map { VodCategory(it.categoryId, it.categoryName) }
+            buildList {
+                films.forEach { add(VodShelf(ContentKind.MOVIE, VodCategory(it.categoryId, it.categoryName))) }
+                shows.forEach { add(VodShelf(ContentKind.SERIES, VodCategory(it.categoryId, it.categoryName))) }
+            }
         }.getOrDefault(emptyList())
     }
 

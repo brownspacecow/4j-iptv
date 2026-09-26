@@ -16,6 +16,7 @@ import com.fourj.iptv.domain.model.Movie
 import com.fourj.iptv.domain.model.ProviderProfile
 import com.fourj.iptv.domain.model.Series
 import com.fourj.iptv.domain.model.VodCategory
+import com.fourj.iptv.domain.model.VodShelf
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -241,7 +242,7 @@ class SearchRepository(
      */
     suspend fun indexEverything(
         liveCategories: List<LiveCategory>,
-        vodCategories: List<VodCategory>,
+        vodShelves: List<VodShelf>,
         onProgress: suspend (added: Int) -> Unit = {},
     ): IndexRun = withContext(ioDispatcher) {
         var added = 0
@@ -260,12 +261,13 @@ class SearchRepository(
             onProgress(added)
         }
 
-        for (category in vodCategories) {
-            val isSeries = category.id.startsWith(SERIES_CATEGORY_PREFIX)
-            val kind = if (isSeries) ContentKind.SERIES else ContentKind.MOVIE
-            val scope = indexScope(kind, category.id)
+        for (shelf in vodShelves) {
+            val scope = indexScope(shelf.kind, shelf.category.id)
             added += runCatching {
-                if (isSeries) indexSeriesCategory(category) else indexMovieCategory(category)
+                when (shelf.kind) {
+                    ContentKind.SERIES -> indexSeriesCategory(shelf.category)
+                    else -> indexMovieCategory(shelf.category)
+                }
             }.onFailure { noteFailure(scope, it) }.getOrDefault(0)
             onProgress(added)
         }
@@ -479,17 +481,6 @@ class SearchRepository(
     private companion object {
         const val TAG = "4J"
         const val DEFAULT_LIMIT = 60
-
-        /**
-         * Film category ids on this panel begin "Movies", series begin "Series".
-         *
-         * A record of the provider's own naming, not a guess: this panel's catalogue returned
-         * categories literally called "Movies-New Releases" and "Series-Drama" in one combined list.
-         * It only decides which endpoint to page, and a category matching neither is treated as a
-         * film shelf - the safe direction, since a film shelf still returns titles, whereas paging
-         * the wrong series endpoint would silently index nothing.
-         */
-        const val SERIES_CATEGORY_PREFIX = "Series"
     }
 }
 

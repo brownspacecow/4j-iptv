@@ -22,6 +22,19 @@ data class Movie(
     val durationSeconds: Long?,
 )
 
+/**
+ * A cached on-demand shelf and the namespace it belongs to.
+ *
+ * Separate from [VodCategory] because the browse screens only ever hold one kind at a time, while
+ * the search indexer needs both and has to know which is which. Carrying the kind beats
+ * re-deriving it from the id or the name - see
+ * [com.fourj.iptv.data.repository.VodRepository.cachedShelves].
+ */
+data class VodShelf(
+    val kind: ContentKind,
+    val category: VodCategory,
+)
+
 /** A series, before its seasons and episodes are loaded. */
 data class Series(
     val id: Int,
