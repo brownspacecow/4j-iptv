@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!--
+      Many IPTV providers are reachable only over plain HTTP, and the Xtream Codes API is
+      routinely served from a host:port with no certificate. Refusing cleartext would make the
+      app useless against a large share of real providers, so HTTP is permitted.
+
+      This is a deliberate, security-relevant trade-off: over HTTP, anyone able to observe the
+      network path can read your provider credentials and your viewing traffic. The app warns
+      the first time a plain-HTTP profile is used. Use HTTPS wherever your provider offers it.
+    -->
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

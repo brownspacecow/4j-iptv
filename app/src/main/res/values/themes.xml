@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      A plain dark, edge-to-edge theme. All real theming happens in Compose
+      (ui/theme/Theme.kt); this exists so the splash/window background is already dark and the
+      app does not flash white on launch, which is very visible on a television.
+    -->
+    <style name="Theme.FourJ" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/surface</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+</resources>
