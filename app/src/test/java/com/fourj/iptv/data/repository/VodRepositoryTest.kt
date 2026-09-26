@@ -286,7 +286,7 @@ class VodRepositoryTest {
     @Test
     fun `saves and reads back a resume position`() = runTest {
         val progress = PlaybackProgress(
-            contentId = 1001,
+            contentKey = contentKey(ContentKind.MOVIE, 1001),
             kind = ContentKind.MOVIE,
             title = "Mock Film: The Longest Night",
             subtitle = null,
@@ -294,6 +294,7 @@ class VodRepositoryTest {
             durationSeconds = 2400,
             posterUrl = null,
             updatedAtMillis = 1_700_000_000_000,
+            contentId = 1001,
         )
         repository.saveProgress(progress)
 
@@ -305,13 +306,54 @@ class VodRepositoryTest {
     }
 
     @Test
+    fun `an episode resumes under its row key, not a hash of it`() = runTest {
+        // An episode has no numeric id, so the key has to carry the panel's own identifier. Hashing
+        // it to fit an Int would make the row unfindable and could collide with another episode.
+        val rowKey = "3001:hash-3001-1-1"
+        repository.saveProgress(
+            PlaybackProgress(
+                contentKey = episodeContentKey(rowKey),
+                kind = ContentKind.EPISODE,
+                title = "Mock Episode 1",
+                subtitle = "Mock Drama Series - S1E1",
+                positionSeconds = 120,
+                durationSeconds = 2400,
+                posterUrl = null,
+                updatedAtMillis = 1_700_000_000_000,
+            ),
+        )
+
+        val read = repository.progressForKey(episodeContentKey(rowKey))
+        assertNotNull(read)
+        assertEquals(rowKey, read!!.episodeRowKey)
+        assertEquals(120L, read.positionSeconds)
+    }
+
+    @Test
+    fun `an episode row can be found again by its key`() = runTest {
+        enqueue(SERIES_INFO)
+        repository.loadSeriesDetail(3001)
+
+        val episode = repository.cachedEpisodes(3001, 1).first()
+        val found = repository.findEpisode(episode.id)
+        assertNotNull(found)
+        assertEquals(episode.id, found!!.id)
+        assertEquals(1, found.episodeNumber)
+    }
+
+    @Test
+    fun `an unknown episode key resolves to nothing rather than throwing`() = runTest {
+        assertEquals(null, repository.findEpisode("no-such-episode"))
+    }
+
+    @Test
     fun `progress is kept apart by kind so ids cannot collide`() = runTest {
         // Live channels, films and episodes all draw ids from the same panel and overlap freely.
         repository.saveProgress(progressFor(ContentKind.MOVIE, 42, "A film"))
-        repository.saveProgress(progressFor(ContentKind.EPISODE, 42, "An episode"))
+        repository.saveProgress(progressFor(ContentKind.LIVE_CHANNEL, 42, "A channel"))
 
         assertEquals("A film", repository.progressFor(ContentKind.MOVIE, 42)!!.title)
-        assertEquals("An episode", repository.progressFor(ContentKind.EPISODE, 42)!!.title)
+        assertEquals("A channel", repository.progressFor(ContentKind.LIVE_CHANNEL, 42)!!.title)
     }
 
     @Test
@@ -337,6 +379,11 @@ class VodRepositoryTest {
         val unknown = progressFor(ContentKind.MOVIE, 3, "Unknown").copy(durationSeconds = 0)
         assertFalse(unknown.isResumable)
         assertEquals(0f, unknown.fraction, 0.001f)
+    }
+
+    @Test
+    fun `a non-episode progress row has no episode key`() = runTest {
+        assertEquals(null, progressFor(ContentKind.MOVIE, 9, "A film").episodeRowKey)
     }
 
     @Test
@@ -384,7 +431,7 @@ class VodRepositoryTest {
     // -----------------------------------------------------------------------------------------
 
     private fun progressFor(kind: ContentKind, id: Int, title: String) = PlaybackProgress(
-        contentId = id,
+        contentKey = contentKey(kind, id),
         kind = kind,
         title = title,
         subtitle = null,
@@ -392,6 +439,7 @@ class VodRepositoryTest {
         durationSeconds = 3600,
         posterUrl = null,
         updatedAtMillis = 1_700_000_000_000,
+        contentId = id,
     )
 
     private fun favourite(kind: ContentKind, id: Int, name: String, at: Long) = Favourite(

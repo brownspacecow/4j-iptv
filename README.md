@@ -2,8 +2,7 @@
 
 A free IPTV player for **Google TV**, Android TV and Fire TV, built around the Xtream Codes API.
 
-This is milestone 1: **connect to a provider and watch live TV.** Movies, series and the EPG are
-not in yet — see [Roadmap](#roadmap).
+Live TV with a programme guide, plus films and series with resume.
 
 ---
 
@@ -11,26 +10,44 @@ not in yet — see [Roadmap](#roadmap).
 
 | | |
 |---|---|
-| Milestone | 1 — live TV |
+| Features | Live TV, EPG, films, series, continue watching, favourites |
 | Builds | `assembleFullDebug`, `assembleLiteDebug` |
-| Tests | 31 unit tests, all passing |
+| Tests | 95 unit tests, all passing |
 | Verified on hardware | **No** — see [Honest limitations](#honest-limitations) |
 
 ## What works
 
-- **Connect** with a pasted provider link, or with server / username / password typed separately.
-  A pasted `get.php` or `player_api.php` link has its credentials extracted automatically, so a long
+**Live TV**
+
+- **Connect** with a pasted provider link, or with server / username / password typed separately. A
+  pasted `get.php` or `player_api.php` link has its credentials extracted automatically, so a long
   password never has to be retyped on a television keyboard.
-- **Browse live TV** by category, with the category list across the top and a channel list below.
-- **Search** filters the loaded list as you type.
+- **Browse by category**, with an "On now" row above the channel list.
 - **Channel zapping** — up and down change channel while watching, wrapping at both ends, the way a
   set-top box does.
+- **Programme guide**: what's on now, how long is left, and what's next, on the row itself and in the
+  player. Fetched for the channels actually on screen, not the whole lineup.
+
+**Films and series**
+
+- **Films and series** in separate sections, each with its own categories.
+- **Series detail** with seasons across the top and episodes below.
+- **Seek and resume.** Left and right scrub; position is saved every few seconds and again on back,
+  so a crash or a power cut costs seconds rather than the film. "Continue watching" picks up where
+  you left off.
+- **Favourites**, kept per account and per content type.
+
+**Throughout**
+
 - **Panel-required headers** (`User-Agent`, `Referer`) are forwarded to the player. A noticeable
   share of channels answer `403` without them.
-- **Cached channel lists.** Categories load once, then come from a local Room database, so browsing
-  is instant and survives a provider outage.
+- **Cached catalogues.** Categories and contents load once, then come from a local Room database, so
+  browsing is instant and survives a provider outage.
 - **Encrypted credentials.** AES-256-GCM under a non-exportable Android Keystore key. App backup is
   disabled so the ciphertext is never copied off the device.
+- **Survives bad providers.** Large JSON responses are routinely truncated in transit; those requests
+  are retried rather than reported as failures. Guides that arrive Base64-encoded, or that list only
+  programmes that have already finished, are handled.
 - **`full` / `lite` audio flavors.** See [Silent channels](#silent-channels).
 
 ## Installing on a television
@@ -58,13 +75,27 @@ sdk.dir=/path/to/Android/sdk
 Then:
 
 ```bash
-./gradlew :app:testFullDebugUnitTest     # 31 unit tests
+./gradlew :app:testFullDebugUnitTest     # 95 unit tests
 ./gradlew :app:assembleFullDebug         # APK with software audio (~43 MB debug)
 ./gradlew :app:assembleLiteDebug         # smaller APK, hardware audio only
 ```
 
 Both flavors are also produced per ABI in a release build (`assembleFullRelease`), which is where
 the size difference really shows.
+
+## Testing
+
+The unit tests run on the JVM with no device. Two of them are worth knowing about:
+
+- **`VodRepositoryTest`** stands up a mock Xtream panel over a real socket with an in-memory Room
+  database, so the whole chain — HTTP, JSON, mapping, database — is covered. It is what caught the
+  bugs listed in the [Roadmap](#roadmap) note below.
+- **`VodViewModelTest`** includes an explicit guard against a category being fetched over and over.
+  That is not a hypothetical: it happened, at dozens of requests a second, which would burn a real
+  provider account's connection allowance.
+
+`VodMigrationTest` builds a version 1 database by hand, migrates it, then opens the result with Room
+so the migrated schema is checked against the entities the app actually declares.
 
 ## Silent channels
 
@@ -83,12 +114,36 @@ to be GPL-3.0. It also ships FFmpeg under LGPLv3 — see [Third-party notices](#
 
 A few decisions that are deliberate, and would otherwise look odd:
 
-**Categories are fetched one at a time.** Asking a panel for its entire live list in one call
-returns every channel it has — on a large account that is tens of thousands of records and a
-payload that dominates startup time and memory. Each category is fetched on demand and cached.
+**Categories are fetched one at a time.** Asking a panel for its entire live list in one call returns
+every channel it has — on a large account that is tens of thousands of records and a payload that
+dominates startup time and memory. Each category is fetched on demand and cached. The same applies to
+films and series.
+
+**Films and series categories are stored with a kind, and keyed on it.** A real provider returns
+both in one combined list, distinguished only by names like `Movies-New Releases` against
+`Series-Drama`. Inferring the kind from the name is fragile, and with a single-column key a series
+category of `7` silently replaces a film category of `7` and a shelf appears empty.
+
+**A category load replaces rather than accumulates.** The provider's answer is authoritative, so a
+film withdrawn at the provider leaves the grid instead of lingering forever. An empty answer clears
+the shelf; a failed request does not, so a network blip never looks like "no films here".
+
+**The live player and the VOD player are separate screens.** Live TV has no timeline to scrub and
+changes channel with the D-pad; a film has both, and the two want opposite input mappings. One screen
+with a mode flag meant either the live overlay grew seek controls that could never do anything, or the
+film player inherited D-pad zapping.
+
+**Back returns to the tab bar before it changes tabs.** Once focus descends into a grid or a list,
+left and right are swallowed, so without this the tab bar is unreachable and the app feels stuck.
+Only back from Live TV leaves the application — the tabs are peers, not a stack, and dropping out of
+the app for pressing back once too many is not acceptable on a television.
 
 **A failed login does not overwrite a working profile.** Credentials are only written to the
 Keystore after the provider has accepted them.
+
+**Database changes are never destructive.** `fallbackToDestructiveMigration` is deliberately not
+enabled: wiping favourites and continue-watching because a schema changed would be a real loss. The
+category cache is disposable and is rebuilt; the viewer's own data is migrated.
 
 **Cleartext HTTP is permitted.** Many panels are only reachable over plain HTTP, and refusing it
 would make the app useless against a large share of real providers. The trade-off is real: over
@@ -97,53 +152,57 @@ Use HTTPS where your provider offers it.
 
 **`tv-material` supplies no `TextField`.** As of `androidx.tv:tv-material` 1.0.0 the library has
 buttons, cards, surfaces and lists, but no text input, so `TvTextField` is built on Compose's
-`BasicTextField` and styled for focus visibility at three metres.
+`BasicTextField` and styled for focus visibility at three metres. Up and down move focus rather than
+the caret, or a single-line field would trap focus inside itself; right only moves on at the end of
+the text, so a viewer can still reach a field that sits to the right of another.
 
-**The lists are stable `LazyRow` / `LazyColumn`, not `TvLazyRow` / `TvLazyColumn`.** Those only
-exist in alpha builds of `androidx.tv:tv-foundation`; depending on an alpha Compose artifact
-alongside a stable BOM is a compatibility problem waiting to happen.
+**The lists are stable `LazyRow` / `LazyColumn`, not `TvLazyRow` / `TvLazyColumn`.** Those only exist
+in alpha builds of `androidx.tv:tv-foundation`; depending on an alpha Compose artifact alongside a
+stable BOM is a compatibility problem waiting to happen.
 
-**The Media3 playback controller is switched off.** It is laid out for touch. On a television its
-scrub bar and buttons are the wrong size in the wrong places, and they occupy the D-pad directions
-that channel zapping needs.
+**The Media3 playback controller is switched off for live TV.** It is laid out for touch. On a
+television its scrub bar and buttons are the wrong size in the wrong places, and they occupy the
+D-pad directions that channel zapping needs. The VOD player draws its own overlay instead.
 
 ## Roadmap
 
-Ordered by what tends to cause the most annoyance first.
+Done: EPG, favourites, continue watching, films and series. Still to do, most valuable first:
 
-1. **EPG / now-next** — per-channel guide, and a "live now" row.
-2. **Favourites** and continue-watching.
-3. **Movies and series** with resume, series/season grouping and autoplay.
-4. **Quality-variant merging and adaptive quality.** Collapsing a channel's `1`/`2`/`3`/4K/FHD/HD/SD
+1. **Quality-variant merging and adaptive quality.** Collapsing a channel's `1`/`2`/`3`/4K/FHD/HD/SD
    variants into one logical channel, choosing by measured bandwidth, stepping down on stalls and
    failing over when a variant is dead. This is the single biggest perceived-quality improvement
    available, and none of the comparable open-source players do it.
-5. **Catch-up / timeshift** via the panel's `has_archive`. Absent from every comparable
+2. **Catch-up / timeshift** via the panel's `has_archive`. Absent from every comparable
    open-source player — a differentiator if your provider supports it.
-6. **Multi-profile support** and per-profile cache isolation.
-7. **Parental / category lock** with a management password.
-8. In-app update check, so a sideloaded build learns about fixes.
+3. **Multi-profile support** and per-profile cache isolation.
+4. **Parental / category lock** with a management password.
+5. In-app update check, so a sideloaded build learns about fixes.
+6. CI, and a release signing configuration.
 
 ## Honest limitations
 
-- **Nothing has been run on a real television yet.** It compiles, the manifest is verified to
-  contain `LEANBACK_LAUNCHER`, and the pure logic is unit tested — but no one has pressed a
-  physical remote against it. D-pad focus behaviour in particular is the thing most likely to need
-  adjustment once it is on real hardware.
-- **Playback is unverified against a real provider.** The Xtream API surface used here
-  (`login`, `get_live_categories`, `get_live_streams`) is well documented, but panels vary.
-- **No EPG, VOD or series support yet.**
+- **Nothing has been run on a real television yet.** Everything below was verified on an Android
+  emulator against a mock panel and against a real provider, but no one has pressed a physical remote
+  against it. D-pad focus behaviour in particular is the thing most likely to need adjustment once it
+  is on real hardware.
+- **Audio smoothness and frame pacing cannot be judged in an emulator.** It has no hardware video
+  decode and routes audio through the host, so it cannot tell you whether playback is smooth on your
+  television. That has to be checked on the device.
+- **Films and series are verified against a mock panel, not a real provider.** The VOD half of the
+  Xtream API is less consistently implemented than the live half, and the real provider's film
+  catalogue was not reachable while this was being built. The mock reproduces the quirks already
+  observed on that provider — truncated responses, one combined category list — but it cannot
+  reproduce ones nobody has hit yet.
 - The debug APK is unsigned, as debug builds are. It is fine for sideloading; a release build needs
   a signing config that is deliberately not committed.
 - Dependencies are pinned to versions known to resolve together (AGP 8.7.3, Kotlin 2.0.21,
-  Media3 1.7.1), not to the newest available.
+  Media3 1.7.1, Room 2.6.1), not to the newest available.
 
 ## Third-party notices
 
 This project bundles FFmpeg-derived software decoders via NextLib. FFmpeg is licensed under
-LGPLv3; NextLib is GPL-3.0. Full attribution for FFmpeg, libvpx, Mbed TLS and the rest of the stack
-belongs in a `THIRD_PARTY_LICENSES.md` alongside this README — that is a loose end in milestone 1,
-and it should be closed before this is passed to anyone else.
+LGPLv3; NextLib is GPL-3.0. Full attribution for FFmpeg, libvpx, Mbed TLS and the rest of the stack is
+in [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
 
 ## Licence
 

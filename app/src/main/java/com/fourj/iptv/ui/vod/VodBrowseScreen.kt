@@ -53,6 +53,7 @@ fun VodBrowseScreen(
     section: VodSection,
     library: LibraryState,
     onCategoryChange: (String) -> Unit,
+    onResumeClick: (com.fourj.iptv.domain.model.PlaybackProgress) -> Unit,
     onMovieClick: (Movie) -> Unit,
     onSeriesClick: (Series) -> Unit,
     modifier: Modifier = Modifier,
@@ -70,9 +71,7 @@ fun VodBrowseScreen(
             if (library.continueWatching.isNotEmpty()) {
                 ContinueWatchingRow(
                     items = library.continueWatching,
-                    onClick = { progress ->
-                        // Resume is dispatched by the shell, which owns the player.
-                    },
+                    onClick = onResumeClick,
                     modifier = Modifier.padding(bottom = 12.dp),
                 )
             }

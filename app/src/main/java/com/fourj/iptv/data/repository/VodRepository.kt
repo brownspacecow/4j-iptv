@@ -179,6 +179,14 @@ class VodRepository(
             database.libraryDao().progressFor(contentKey(kind, contentId))?.toModel()
         }
 
+    suspend fun progressForKey(key: String): PlaybackProgress? =
+        withContext(ioDispatcher) { database.libraryDao().progressFor(key)?.toModel() }
+
+    /** The episode behind a resume row, or null if it is no longer cached. */
+    suspend fun findEpisode(episodeRowKey: String): Episode? = withContext(ioDispatcher) {
+        database.vodDao().findEpisode(episodeRowKey)?.toModel()
+    }
+
     suspend fun saveProgress(progress: PlaybackProgress) = withContext(ioDispatcher) {
         database.libraryDao().saveProgress(progress.toEntity())
     }
@@ -339,7 +347,7 @@ internal fun EpisodeEntity.toModel() = Episode(
 )
 
 internal fun PlaybackProgress.toEntity() = com.fourj.iptv.data.local.PlaybackProgressEntity(
-    contentKey = contentKey(kind, contentId),
+    contentKey = contentKey,
     kind = kind.name,
     contentId = contentId,
     title = title,
@@ -351,7 +359,7 @@ internal fun PlaybackProgress.toEntity() = com.fourj.iptv.data.local.PlaybackPro
 )
 
 internal fun com.fourj.iptv.data.local.PlaybackProgressEntity.toModel() = PlaybackProgress(
-    contentId = contentId,
+    contentKey = contentKey,
     kind = runCatching { ContentKind.valueOf(kind) }.getOrDefault(ContentKind.MOVIE),
     title = title,
     subtitle = subtitle,
@@ -359,6 +367,7 @@ internal fun com.fourj.iptv.data.local.PlaybackProgressEntity.toModel() = Playba
     durationSeconds = durationSeconds,
     posterUrl = posterUrl,
     updatedAtMillis = updatedAtMillis,
+    contentId = contentId,
 )
 
 internal fun Favourite.toEntity() = com.fourj.iptv.data.local.FavouriteEntity(
@@ -389,5 +398,12 @@ internal fun com.fourj.iptv.data.local.FavouriteEntity.toModel() = Favourite(
  * a favourite or a resume position.
  */
 internal fun contentKey(kind: ContentKind, contentId: Int): String = "${kind.name}:$contentId"
+
+/**
+ * Key for an episode, which has no usable numeric id.
+ *
+ * The panel's episode identifier is kept verbatim so the row can be found again later.
+ */
+internal fun episodeContentKey(episodeRowKey: String): String = "${ContentKind.EPISODE.name}:$episodeRowKey"
 
 

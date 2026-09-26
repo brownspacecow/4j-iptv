@@ -1,4 +1,4 @@
-﻿package com.fourj.iptv.ui.vod
+package com.fourj.iptv.ui.vod
 
 import android.util.Log
 import androidx.activity.compose.BackHandler
@@ -68,7 +68,13 @@ fun VodPlayerScreen(
     subtitle: String?,
     streamUrl: String,
     kind: ContentKind,
-    contentId: Int,
+    /**
+     * Identity this position is saved under.
+     *
+     * Passed in rather than composed from a kind and a number, because an episode has no usable
+     * numeric id and the only handle that finds it again is its row key.
+     */
+    progressKey: String,
     posterUrl: String?,
     resumePositionSeconds: Long,
     requestHeaders: Map<String, String>,
@@ -137,7 +143,7 @@ fun VodPlayerScreen(
             if (durationMs > 0) {
                 onProgress(
                     PlaybackProgress(
-                        contentId = contentId,
+                        contentKey = progressKey,
                         kind = kind,
                         title = title,
                         subtitle = subtitle,
@@ -172,7 +178,7 @@ fun VodPlayerScreen(
         if (durationMs > 0) {
             onProgress(
                 PlaybackProgress(
-                    contentId = contentId,
+                    contentKey = progressKey,
                     kind = kind,
                     title = title,
                     subtitle = subtitle,
@@ -272,7 +278,7 @@ fun VodPlayerScreen(
                 } else {
                     Text(
                         text = "${formatDuration(positionMs)} / ${formatDuration(durationMs)}" +
-                            "   Â·   ${if (isPlaying) "playing" else "paused"}",
+                            "   ·   ${if (isPlaying) "playing" else "paused"}",
                         style = androidx.tv.material3.MaterialTheme.typography.bodySmall,
                         color = Color(0xFFBFC7D2),
                     )
@@ -283,7 +289,7 @@ fun VodPlayerScreen(
                     )
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        text = "â† â†’ seek    Â·    OK pause/resume    Â·    Back to exit",
+                        text = "← → seek    ·    OK pause/resume    ·    Back to exit",
                         style = androidx.tv.material3.MaterialTheme.typography.labelSmall,
                         color = Color(0xFF8A94A3),
                     )

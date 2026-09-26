@@ -61,11 +61,13 @@ data class Episode(
 /**
  * Where a viewer left off.
  *
- * Keyed by content id so the same field serves films and episodes, and so "continue watching" is
- * one query rather than two.
+ * Identified by [contentKey] rather than by a numeric id. Live channels and films have one, but an
+ * episode's identifier in the panel is an arbitrary string ("3001-s1-e1", or an info hash), and
+ * hashing it to squeeze it into an Int is lossy - two episodes can collide, and the row cannot be
+ * found again afterwards, so "continue watching" could never resume. The key is stored as-is.
  */
 data class PlaybackProgress(
-    val contentId: Int,
+    val contentKey: String,
     val kind: ContentKind,
     val title: String,
     val subtitle: String?,
@@ -73,7 +75,27 @@ data class PlaybackProgress(
     val durationSeconds: Long,
     val posterUrl: String?,
     val updatedAtMillis: Long,
+    /**
+     * The panel's numeric id, meaningful for films and live channels.
+     *
+     * Carried because it is what the stored row holds, and because a film is still looked up by it.
+     * Zero for an episode, which has no numeric id - [contentKey] is the handle there.
+     */
+    val contentId: Int = 0,
 ) {
+    /**
+     * The episode's row key, when this is an episode.
+     *
+     * This is what makes an episode resumable: the row key is what the episodes table is keyed on,
+     * so it is the only handle that can find the episode again.
+     */
+    val episodeRowKey: String?
+        get() = if (kind == ContentKind.EPISODE) {
+            contentKey.removePrefix("$kind:")
+        } else {
+            null
+        }
+
     /** Fraction watched, 0f..1f. Treated as complete only once genuinely near the end. */
     val fraction: Float
         get() = if (durationSeconds <= 0) 0f

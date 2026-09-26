@@ -1,4 +1,4 @@
-﻿package com.fourj.iptv.ui.vod
+package com.fourj.iptv.ui.vod
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -7,6 +7,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.fourj.iptv.data.remote.toUserMessage
 import com.fourj.iptv.data.repository.VodRepository
 import com.fourj.iptv.data.repository.contentKey
+import com.fourj.iptv.data.repository.episodeContentKey
 import com.fourj.iptv.di.AppContainer
 import com.fourj.iptv.domain.model.ContentKind
 import com.fourj.iptv.domain.model.Episode
@@ -76,13 +77,19 @@ data class LibraryState(
         favourites.any { it.kind == kind && it.contentId == id }
 
     fun progress(kind: ContentKind, id: Int): PlaybackProgress? =
-        continueWatching.firstOrNull { it.kind == kind && it.contentId == id }
+        continueWatching.firstOrNull { it.contentKey == contentKey(kind, id) }
 }
 
 /** Which catalogue the browse screen is showing; they are separate namespaces in the panel. */
 enum class VodSection(val kind: ContentKind) {
     MOVIES(ContentKind.MOVIE),
     SERIES(ContentKind.SERIES),
+}
+
+/** A "continue watching" row resolved back into something the player can open. */
+sealed interface Resumable {
+    data class FilmItem(val movie: Movie, val url: String, val resumeSeconds: Long) : Resumable
+    data class EpisodeItem(val episode: Episode, val url: String, val resumeSeconds: Long) : Resumable
 }
 
 class VodViewModel(
@@ -277,6 +284,30 @@ class VodViewModel(
     fun movieUrl(movie: Movie): String = repository.movieStreamUrl(movie)
 
     fun episodeUrl(episode: Episode): String? = repository.episodeStreamUrl(episode)
+
+    /** The key a film or episode's resume position is stored under. */
+    fun progressKeyForMovie(movieId: Int): String = contentKey(ContentKind.MOVIE, movieId)
+
+    fun progressKeyForEpisode(episode: Episode): String = episodeContentKey(episode.id)
+
+    /**
+     * Turn a "continue watching" row back into something playable.
+     *
+     * Returns null when the thing is no longer available - a film removed at the provider, or an
+     * episode whose series has fallen out of the cache - so the caller can drop the row instead of
+     * opening a player with an empty url.
+     */
+    suspend fun resolveForResume(progress: PlaybackProgress): Resumable? {
+        val episodeKey = progress.episodeRowKey
+        if (episodeKey != null) {
+            val episode = repository.findEpisode(episodeKey) ?: return null
+            val url = repository.episodeStreamUrl(episode) ?: return null
+            return Resumable.EpisodeItem(episode, url, progress.positionSeconds)
+        }
+        if (progress.kind != ContentKind.MOVIE) return null
+        val movie = repository.findMovie(progress.contentId) ?: return null
+        return Resumable.FilmItem(movie, repository.movieStreamUrl(movie), progress.positionSeconds)
+    }
 
     fun toggleFavourite(kind: ContentKind, id: Int, name: String, subtitle: String?, posterUrl: String?) {
         viewModelScope.launch {

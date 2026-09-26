@@ -99,9 +99,15 @@ class VodViewModelTest {
         }
     }
 
-    /** Wait until [condition] holds, or fail reporting what the state actually was. */
+    /**
+     * Wait until [condition] holds, or fail reporting what the state actually was.
+     *
+     * Generous on purpose. This is a real-time wait on a real socket, and the suite runs Robolectric
+     * tests in one JVM alongside a Gradle daemon and an emulator, so a tight deadline turns into a
+     * test that fails on a busy machine and passes on a quiet one - which is worse than no test.
+     */
     private fun <T> StateFlow<T>.await(
-        timeoutMillis: Long = 10_000,
+        timeoutMillis: Long = 45_000,
         describe: (T) -> String,
         condition: (T) -> Boolean,
     ): T = runBlocking {

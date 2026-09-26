@@ -134,7 +134,7 @@ fun SeriesDetailScreen(
 
             when {
                 detail.error != null -> Message(detail.error, MaterialTheme.colorScheme.error)
-                detail.isLoading -> Message("Loading episodesâ€¦")
+                detail.isLoading -> Message("Loading episodes…")
                 detail.episodes.isEmpty() -> Message("No episodes here.")
                 else -> LazyColumn(
                     modifier = Modifier.fillMaxSize(),
@@ -196,13 +196,6 @@ private fun MetadataLine(label: String, value: String?) {
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-    }
-}
-
-@Composable
-internal fun BoxPlaceholder() {
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Text("â€”", color = Color.Unspecified)
     }
 }
 

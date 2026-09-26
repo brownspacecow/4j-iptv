@@ -48,6 +48,9 @@ interface VodDao {
     @Query("SELECT * FROM episodes WHERE seriesId = :seriesId")
     suspend fun episodesFor(seriesId: Int): List<EpisodeEntity>
 
+    @Query("SELECT * FROM episodes WHERE episodeRowKey = :episodeRowKey LIMIT 1")
+    suspend fun findEpisode(episodeRowKey: String): EpisodeEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertEpisodes(rows: List<EpisodeEntity>)
 

@@ -1,6 +1,12 @@
-﻿package com.fourj.iptv.ui.shell
+package com.fourj.iptv.ui.shell
 
 import androidx.compose.foundation.background
+import androidx.activity.compose.BackHandler
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.platform.LocalContext
+import android.app.Activity
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,6 +23,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -49,6 +56,8 @@ import com.fourj.iptv.ui.vod.SeriesDetailScreen
 import com.fourj.iptv.ui.vod.VodBrowseScreen
 import com.fourj.iptv.ui.vod.VodPlayerScreen
 import com.fourj.iptv.ui.vod.VodSection
+import kotlinx.coroutines.launch
+import com.fourj.iptv.ui.vod.Resumable
 import com.fourj.iptv.ui.vod.VodViewModel
 
 /** Top-level destinations. Plain state rather than a navigation graph: four screens, one stack. */
@@ -66,6 +75,7 @@ sealed interface VodPlayback {
         val url: String,
         val kind: ContentKind,
         val id: Int,
+        val progressKey: String,
         val posterUrl: String?,
         val resumeSeconds: Long,
         val headers: Map<String, String>,
@@ -75,10 +85,7 @@ sealed interface VodPlayback {
         val title: String,
         val subtitle: String?,
         val url: String,
-        val seriesId: Int,
-        val season: Int,
-        val episodeNumber: Int,
-        val episodeKey: String,
+        val progressKey: String,
         val posterUrl: String?,
         val resumeSeconds: Long,
     ) : VodPlayback
@@ -93,6 +100,17 @@ fun AppShell(
 ) {
     var destination by remember { mutableStateOf(TopLevel.LIVE) }
     var vodPlayback by remember { mutableStateOf<VodPlayback?>(null) }
+    val scope = rememberCoroutineScope()
+    val tabFocus = remember { FocusRequester() }
+    val activity = LocalContext.current as? Activity
+
+    /**
+     * Whether focus has descended past the tab bar.
+     *
+     * Tracked rather than guessed, because the alternative - always pulling focus back on back -
+     * makes back feel broken when the viewer is already on the tab bar trying to change tabs.
+     */
+    var contentHasFocus by remember { mutableStateOf(false) }
 
     val liveViewModel: LiveViewModel = viewModel(
         key = "live-${profile.baseUrl}",
@@ -109,6 +127,62 @@ fun AppShell(
     val seriesDetail by vodViewModel.seriesDetail.collectAsStateWithLifecycle()
     val library by vodViewModel.library.collectAsStateWithLifecycle()
 
+    /**
+     * Back returns to the tab bar before it changes tabs, and only leaves from Live TV.
+     *
+     * Two separate problems, one fix. The tab bar is unreachable once focus descends into a tab's
+     * content - a grid or a list swallows left and right, so there is no key that gets you back and
+     * the app feels stuck. And because the tabs are peers rather than a stack, back from a
+     * top-level tab should land on Live TV rather than dropping out of the application, which on a
+     * television means losing your place for pressing back once too many.
+     */
+    BackHandler(enabled = true) {
+        when {
+            vodState.detail != null -> vodViewModel.closeDetail()
+            contentHasFocus -> tabFocus.requestFocus()
+            destination != TopLevel.LIVE -> destination = TopLevel.LIVE
+            // Already on Live TV with focus on the tab bar: this is the bottom of the stack, so
+            // let the system close the app.
+            else -> {
+                activity?.finish()
+            }
+        }
+    }
+
+    /**
+     * Open a "continue watching" row.
+     *
+     * Resolved against the cache rather than guessed. A row whose film has been withdrawn, or whose
+     * series has aged out of the cache, resolves to null and is left alone - much better than
+     * opening a player on an empty url and reporting a decode error the viewer can do nothing
+     * about.
+     */
+    suspend fun resume(progress: PlaybackProgress) {
+        when (val resumable = vodViewModel.resolveForResume(progress)) {
+            is Resumable.FilmItem -> vodPlayback = VodPlayback.Film(
+                title = resumable.movie.name,
+                url = resumable.url,
+                kind = ContentKind.MOVIE,
+                id = resumable.movie.id,
+                progressKey = progress.contentKey,
+                posterUrl = resumable.movie.posterUrl,
+                resumeSeconds = resumable.resumeSeconds,
+                headers = emptyMap(),
+            )
+
+            is Resumable.EpisodeItem -> vodPlayback = VodPlayback.EpisodePlayback(
+                title = resumable.episode.title,
+                subtitle = progress.subtitle,
+                url = resumable.url,
+                progressKey = progress.contentKey,
+                posterUrl = progress.posterUrl,
+                resumeSeconds = resumable.resumeSeconds,
+            )
+
+            null -> Unit
+        }
+    }
+
     val current = vodPlayback
     if (current != null) {
         when (current) {
@@ -117,7 +191,7 @@ fun AppShell(
                 subtitle = null,
                 streamUrl = current.url,
                 kind = current.kind,
-                contentId = current.id,
+                progressKey = current.progressKey,
                 posterUrl = current.posterUrl,
                 resumePositionSeconds = current.resumeSeconds,
                 requestHeaders = current.headers,
@@ -133,8 +207,7 @@ fun AppShell(
                 subtitle = current.subtitle,
                 streamUrl = current.url,
                 kind = ContentKind.EPISODE,
-                // Keyed on the episode row key so each episode resumes independently.
-                contentId = current.episodeKey.hashCode(),
+                progressKey = current.progressKey,
                 posterUrl = current.posterUrl,
                 resumePositionSeconds = current.resumeSeconds,
                 requestHeaders = emptyMap(),
@@ -155,11 +228,20 @@ fun AppShell(
         Column(modifier = Modifier.fillMaxSize()) {
             TopBar(
                 current = destination,
+                focusRequester = tabFocus,
                 onSelect = { destination = it },
                 onSignOut = onSignOut,
             )
 
-            when (destination) {
+            // Focus tracking is scoped to the content area, not the whole column: the column also
+            // contains the tab bar, and counting the bar's own focus as "in the content" would make
+            // back pull focus back onto the bar it is already on.
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .onFocusChanged { contentHasFocus = it.isFocused },
+            ) {
+                when (destination) {
                 TopLevel.LIVE -> LiveScreen(
                     container = container,
                     profile = profile,
@@ -180,12 +262,10 @@ fun AppShell(
                                     val url = vodViewModel.episodeUrl(episode) ?: return@SeriesDetailScreen
                                     vodPlayback = VodPlayback.EpisodePlayback(
                                         title = episode.title,
-                                        subtitle = "${seriesState.series.name} Â· S${episode.seasonNumber}E${episode.episodeNumber}",
+                                        subtitle = "${seriesState.series.name} · " +
+                                            "S${episode.seasonNumber}E${episode.episodeNumber}",
                                         url = url,
-                                        seriesId = episode.seriesId,
-                                        season = episode.seasonNumber,
-                                        episodeNumber = episode.episodeNumber,
-                                        episodeKey = episode.id,
+                                        progressKey = vodViewModel.progressKeyForEpisode(episode),
                                         posterUrl = seriesState.series.posterUrl,
                                         resumeSeconds = 0,
                                     )
@@ -203,6 +283,7 @@ fun AppShell(
                             section = section,
                             library = library,
                             onCategoryChange = vodViewModel::selectCategory,
+                            onResumeClick = { progress -> scope.launch { resume(progress) } },
                             onMovieClick = { movie ->
                                 vodViewModel.openMovie(movie)
                                 val progress = library.progress(ContentKind.MOVIE, movie.id)
@@ -211,6 +292,7 @@ fun AppShell(
                                     url = vodViewModel.movieUrl(movie),
                                     kind = ContentKind.MOVIE,
                                     id = movie.id,
+                                    progressKey = vodViewModel.progressKeyForMovie(movie.id),
                                     posterUrl = movie.posterUrl,
                                     resumeSeconds = progress?.positionSeconds ?: 0,
                                     headers = buildMap {
@@ -226,38 +308,18 @@ fun AppShell(
 
                 TopLevel.LIBRARY -> LibraryScreen(
                     state = library,
-                    onContinueClick = { progress -> resumeFrom(progress, vodViewModel, library) { vodPlayback = it } },
-                    onClearProgress = { },
+                    onContinueClick = { progress -> scope.launch { resume(progress) } },
                 )
+                }
             }
         }
     }
 }
 
-private fun resumeFrom(
-    progress: PlaybackProgress,
-    viewModel: VodViewModel,
-    library: com.fourj.iptv.ui.vod.LibraryState,
-    assign: (VodPlayback) -> Unit,
-) {
-    // Resuming needs the stream URL, which is only derivable from the catalogue entry, so a resume
-    // from the library row opens the browse screen at that title rather than guessing a URL.
-    assign(
-        VodPlayback.Film(
-            title = progress.title,
-            url = "",
-            kind = progress.kind,
-            id = progress.contentId,
-            posterUrl = progress.posterUrl,
-            resumeSeconds = progress.positionSeconds,
-            headers = emptyMap(),
-        ),
-    )
-}
-
 @Composable
 private fun TopBar(
     current: TopLevel,
+    focusRequester: FocusRequester,
     onSelect: (TopLevel) -> Unit,
     onSignOut: () -> Unit,
 ) {
@@ -278,6 +340,13 @@ private fun TopBar(
         TopLevel.entries.forEach { entry ->
             Button(
                 onClick = { onSelect(entry) },
+                // Only the active tab carries the requester, so back lands on the tab the viewer is
+                // actually looking at rather than on whichever one happens to be first.
+                modifier = if (entry == current) {
+                    Modifier.focusRequester(focusRequester)
+                } else {
+                    Modifier
+                },
                 scale = androidx.tv.material3.ButtonDefaults.scale(focusedScale = 1.08f),
             ) {
                 Text(entry.label)
@@ -291,7 +360,6 @@ private fun TopBar(
 private fun LibraryScreen(
     state: com.fourj.iptv.ui.vod.LibraryState,
     onContinueClick: (PlaybackProgress) -> Unit,
-    onClearProgress: () -> Unit,
 ) {
     val uiScale = LocalUiScale.current
     Column(
