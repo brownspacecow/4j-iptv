@@ -427,6 +427,23 @@ class VodRepositoryTest {
     }
 
     @Test
+    fun `two episodes get distinct resume keys`() = runTest {
+        // Regression. The lazy lists that show continue-watching are keyed on this string, and an
+        // episode has no numeric id to key on - it used to fall back to zero, so the second episode
+        // anyone watched produced a duplicate key and crashed the app. Found on the emulator.
+        enqueue(SERIES_INFO)
+        repository.loadSeriesDetail(3001)
+
+        val keys = repository.cachedEpisodes(3001, 1).map { episodeContentKey(it.id) }
+        assertEquals(3, keys.size)
+        assertEquals(keys.size, keys.toSet().size)
+
+        // And across seasons, since those share a list in the UI once combined.
+        val acrossSeasons = keys + repository.cachedEpisodes(3001, 2).map { episodeContentKey(it.id) }
+        assertEquals(6, acrossSeasons.toSet().size)
+    }
+
+    @Test
     fun `an episode favourite is found by its key and removes cleanly`() = runTest {
         // Episodes have no numeric id, so add, remove and lookup all go through the content key. A
         // remove that missed would leave the row stuck on forever, since a toggle would then only

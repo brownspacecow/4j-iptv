@@ -135,8 +135,12 @@ fun AppShell(
      * the app feels stuck. And because the tabs are peers rather than a stack, back from a
      * top-level tab should land on Live TV rather than dropping out of the application, which on a
      * television means losing your place for pressing back once too many.
+     *
+     * Disabled outright while a player is up. Leaving it enabled and relying on the player's own
+     * handler being registered later is how back ended up closing the series detail as well as the
+     * player: two handlers, one key press, and the wrong one won.
      */
-    BackHandler(enabled = true) {
+    BackHandler(enabled = vodPlayback == null) {
         when {
             vodState.detail != null -> vodViewModel.closeDetail()
             contentHasFocus -> tabFocus.requestFocus()
@@ -207,8 +211,10 @@ fun AppShell(
                 },
                 onProgress = vodViewModel::saveProgress,
                 onBack = {
+                    // Only leave the player. Closing the detail here as well meant one back press
+                    // from an episode threw away the series you were reading as well, landing on the
+                    // browse screen instead of where you were.
                     vodPlayback = null
-                    vodViewModel.closeDetail()
                 },
             )
 
@@ -231,10 +237,7 @@ fun AppShell(
                     )
                 },
                 onProgress = vodViewModel::saveProgress,
-                onBack = {
-                    vodPlayback = null
-                    vodViewModel.closeDetail()
-                },
+                onBack = { vodPlayback = null },
             )
         }
         return
@@ -401,10 +404,10 @@ private fun LibraryScreen(
         } else {
             LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 items(count = state.continueWatching.size, key = { index ->
-                    // The key lambda receives the index, not the item. Kind is part of the key
-                    // because ids overlap between films, episodes and channels.
-                    val p = state.continueWatching[index]
-                    "${p.kind}:${p.contentId}"
+                    // The stored content key, not kind plus numeric id. An episode has no numeric
+                    // id, so that combination is "EPISODE:0" for every episode and the second one
+                    // watched crashes the app on a duplicate lazy-list key.
+                    state.continueWatching[index].contentKey
                 }) { index ->
                     val progress = state.continueWatching[index]
                     Card(

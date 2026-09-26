@@ -229,7 +229,10 @@ private fun ContinueWatchingRow(
         )
         Spacer(Modifier.height(8.dp))
         LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            items(count = resumable.size, key = { resumable[it].contentId }) { index ->
+            // Keyed on the content key, not the numeric id. An episode's numeric id is
+            // zero - it has none - so keying on it makes every episode collide, and
+            // watching a second one crashes the app on a duplicate lazy-list key.
+            items(count = resumable.size, key = { resumable[it].contentKey }) { index ->
                 val progress = resumable[index]
                 Card(
                     onClick = { onClick(progress) },
