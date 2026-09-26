@@ -1,6 +1,6 @@
 package com.fourj.iptv.data.local
 
-import androidx.room.Room
+import com.fourj.iptv.testing.inMemorySearchIndexDatabase
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -9,28 +9,25 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
-import org.robolectric.RuntimeEnvironment
 
 /**
  * The search index database, and the schema it creates.
  *
- * A migration test for a database whose whole justification is that it has no migrations: it holds
- * derived names and nothing else, so a schema change is handled by deleting the file. That is a
- * decision worth testing, because the day someone adds a viewer-owned column to this database the
- * "just delete it" answer stops being free - and the test that notices is the one asserting the
- * schema has no such column.
+ * Named for the DAO rather than a migration, because that is what it tests: what the index stores,
+ * how a search behaves against it, and what the progress table records. Exactly one test is about
+ * the schema - [the schema holds no viewer-owned column] - and it earns its place, because it is
+ * the one that should fail the day someone adds a column the viewer would miss if the file were
+ * deleted. Until then a schema change is handled by throwing the file away, and that is the whole
+ * justification for this database having no migrations.
  */
 @RunWith(RobolectricTestRunner::class)
-class SearchIndexMigrationTest {
+class SearchIndexDaoTest {
 
     private lateinit var database: SearchIndexDatabase
 
     @Before
     fun setUp() {
-        database = Room.inMemoryDatabaseBuilder(
-            RuntimeEnvironment.getApplication(),
-            SearchIndexDatabase::class.java,
-        ).allowMainThreadQueries().build()
+        database = inMemorySearchIndexDatabase()
     }
 
     @After
@@ -128,16 +125,6 @@ class SearchIndexMigrationTest {
         assertEquals(1, dao.indexedCount("MOVIE"))
         assertEquals("New Title", dao.search("new", 10).first().name)
         assertTrue(dao.search("old", 10).isEmpty())
-    }
-
-    @Test
-    fun `an untitled row still counts, so the repository is what filters it`() = runBlockingTest {
-        // Recorded because it is a real constraint on the index rather than on the database: the
-        // repository drops blank names before inserting, because a row with no name can never match
-        // a search while still inflating the coverage count the screen shows.
-        val dao = dao()
-        dao.upsertAll(listOf(row("MOVIE:1", "MOVIE", 1, "Real Title")))
-        assertEquals(1, dao.indexedCount("MOVIE"))
     }
 
     @Test

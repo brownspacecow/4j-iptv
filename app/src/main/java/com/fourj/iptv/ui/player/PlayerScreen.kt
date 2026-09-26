@@ -165,7 +165,7 @@ fun PlayerScreen(
                 // Always log the cause. The previous version swallowed it and showed a generic
                 // message, which made a channel that was merely unreachable look identical to a
                 // channel that was genuinely dead - and left nothing to debug with.
-                Log.w(TAG, "playback failed for $streamUrl", error)
+                Log.w(TAG, "playback failed for ${redactCredentials(streamUrl)}", error)
                 errorText = describePlaybackError(error)
             }
 

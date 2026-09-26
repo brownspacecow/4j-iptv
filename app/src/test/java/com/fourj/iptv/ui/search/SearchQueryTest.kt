@@ -14,9 +14,12 @@ import org.junit.Test
 class SearchQueryTest {
 
     @Test
-    fun `blank term matches nothing`() {
+    fun `a term with nothing in it is rejected`() {
+        // Whitespace, tabs and newlines all fold to nothing. A LIKE '%%' would match every row, so
+        // an empty search would appear to work by showing the entire library.
         assertTrue(normaliseSearchTerm("").isEmpty())
         assertTrue(normaliseSearchTerm("   ").isEmpty())
+        assertTrue(normaliseSearchTerm("\t\n ").isEmpty())
     }
 
     @Test
@@ -45,10 +48,5 @@ class SearchQueryTest {
         // searching for "100%" or "Spider-Man_2" would otherwise have their search silently
         // rewritten into a pattern that matches far more than they asked for.
         assertTrue(normaliseSearchTerm("100%").contains('%'))
-    }
-
-    @Test
-    fun `a term that is only whitespace after folding is rejected`() {
-        assertTrue(normaliseSearchTerm("\t\n ").isEmpty())
     }
 }

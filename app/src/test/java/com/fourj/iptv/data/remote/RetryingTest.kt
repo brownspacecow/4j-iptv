@@ -117,6 +117,18 @@ class UserMessageTest {
     }
 
     @Test
+    fun `a truncated response does not blame the wrong kind of list`() {
+        // This message is reached from a live category, a film shelf and a series shelf alike, so it
+        // must not name one of them. It did say "channel list", which left a viewer whose *films*
+        // were cut off being told to look at their channels.
+        val message = SerializationException("missing field").toUserMessage()
+        assertFalse(
+            "message names a content type it cannot know: $message",
+            message.contains("channel", ignoreCase = true),
+        )
+    }
+
+    @Test
     fun `a real serialization failure still maps to something readable`() {
         val message = SerializationException("missing field").toUserMessage()
         assertTrue(message.isNotBlank())

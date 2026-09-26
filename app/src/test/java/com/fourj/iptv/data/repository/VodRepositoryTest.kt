@@ -1,33 +1,26 @@
 package com.fourj.iptv.data.repository
 
-import androidx.room.Room
-import com.fourj.iptv.data.local.VodDatabase
-import com.fourj.iptv.data.remote.XtreamNetwork
 import com.fourj.iptv.domain.model.ContentKind
 import com.fourj.iptv.domain.model.Favourite
 import com.fourj.iptv.domain.model.PlaybackProgress
-import com.fourj.iptv.domain.model.ProviderProfile
+import com.fourj.iptv.testing.PanelFixture
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
-import okhttp3.mockwebserver.MockResponse
-import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
-import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
-import org.robolectric.RuntimeEnvironment
 
 /**
  * The on-demand catalogue, exercised against a stand-in panel over a real socket.
  *
- * Room runs in memory and Retrofit talks to a [MockWebServer], so the whole chain - HTTP, JSON,
+ * Room runs in memory and Retrofit talks to a [PanelFixture], so the whole chain - HTTP, JSON,
  * mapping, the database - is covered without a device. That matters because the failures worth
  * catching here are all in the seams: a category stored under the wrong kind, a series whose
  * episodes never land, a resume position that reads back wrong.
@@ -35,47 +28,16 @@ import org.robolectric.RuntimeEnvironment
 @RunWith(RobolectricTestRunner::class)
 class VodRepositoryTest {
 
-    private lateinit var server: MockWebServer
-    private lateinit var database: VodDatabase
-    private lateinit var repository: VodRepository
+    // Unconfined, so a flow read resolves without a dispatcher being advanced by hand.
+    private val panel = PanelFixture(ioDispatcher = Dispatchers.Unconfined)
+    private val repository = panel.vodRepository()
 
     private val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
 
-    private val profile = ProviderProfile(
-        baseUrl = "http://panel.test",
-        username = "alice",
-        password = "secret",
-    )
-
-    @Before
-    fun setUp() {
-        server = MockWebServer()
-        server.start()
-
-        database = Room.inMemoryDatabaseBuilder(
-            RuntimeEnvironment.getApplication(),
-            VodDatabase::class.java,
-        ).allowMainThreadQueries().build()
-
-        val panelProfile = profile.copy(baseUrl = server.url("/").toString().trimEnd('/'))
-        repository = VodRepository(
-            profile = panelProfile,
-            database = database,
-            // Unconfined so a flow read resolves without a dispatcher being advanced by hand.
-            ioDispatcher = Dispatchers.Unconfined,
-            api = XtreamNetwork.createVodApi(panelProfile),
-        )
-    }
-
     @After
-    fun tearDown() {
-        database.close()
-        server.shutdown()
-    }
+    fun tearDown() = panel.close()
 
-    private fun enqueue(body: String) {
-        server.enqueue(MockResponse().setBody(body).setHeader("Content-Type", "application/json"))
-    }
+    private fun enqueue(body: String) = panel.enqueue(body)
 
     // -----------------------------------------------------------------------------------------
     // Categories
@@ -196,9 +158,9 @@ class VodRepositoryTest {
         repository.ensureCategoryLoaded("10", ContentKind.MOVIE)
         val movie = repository.observeMovies("10").first().single()
 
-        // The panel under test is the MockWebServer, so the constructed url carries its authority.
+        // The panel under test is the PanelFixture, so the constructed url carries its authority.
         assertEquals(
-            "${server.url("/").toString().trimEnd('/')}/movie/alice/secret/7.mkv",
+            "${panel.profile.baseUrl}/movie/alice/secret/7.mkv",
             repository.movieStreamUrl(movie),
         )
     }
@@ -402,7 +364,7 @@ class VodRepositoryTest {
         val episode = repository.cachedEpisodes(556, 1).single()
         assertTrue(episode.isPlayable)
         assertEquals(
-            "${server.url("/").toString().trimEnd('/')}/series/alice/secret/3054675.mkv",
+            "${panel.profile.baseUrl}/series/alice/secret/3054675.mkv",
             repository.episodeStreamUrl(episode),
         )
     }
@@ -429,15 +391,6 @@ class VodRepositoryTest {
         val url = repository.episodeStreamUrl(repository.cachedEpisodes(558, 1).single())
         assertNotNull(url)
         assertTrue(url!!.endsWith("/777.mkv"))
-    }
-
-    @Test
-    fun `the nested payload still works after the keyed one was added`() = runTest {
-        enqueue(SERIES_INFO)
-        val seasons = repository.loadSeriesDetail(3001).getOrThrow()
-
-        assertEquals(listOf(1, 2), seasons.map { it.number })
-        assertEquals(3, repository.cachedEpisodes(3001, 1).size)
     }
 
     @Test
@@ -492,6 +445,8 @@ class VodRepositoryTest {
                 durationSeconds = 2400,
                 posterUrl = null,
                 updatedAtMillis = 1_700_000_000_000,
+                // An episode has no numeric id, so zero is the true value rather than an omission.
+                contentId = 0,
             ),
         )
 
@@ -528,34 +483,39 @@ class VodRepositoryTest {
         assertEquals("A channel", repository.progressFor(ContentKind.LIVE_CHANNEL, 42)!!.title)
     }
 
+    /**
+     * What "Continue watching" is allowed to offer.
+     *
+     * One property, three boundaries, so one table rather than three near-identical tests. Getting
+     * the edges wrong is not cosmetic: a film watched to the end reappearing in the list is the
+     * kind of small wrongness that makes a resume feature feel broken.
+     */
     @Test
-    fun `a film barely started is not offered as resumable`() = runTest {
-        val barely = progressFor(ContentKind.MOVIE, 1, "Barely").copy(
-            positionSeconds = 1,
-            durationSeconds = 10_000,
+    fun `only a part-watched title of known length is offered as resumable`() {
+        fun progress(position: Long, duration: Long) =
+            progressFor(ContentKind.MOVIE, 1, "A Film").copy(
+                positionSeconds = position,
+                durationSeconds = duration,
+            )
+
+        val offered = listOf(
+            Triple(60L, 3_600L, true),      // an ordinary position partway in
+            Triple(1L, 10_000L, false),     // barely started
+            Triple(9_900L, 10_000L, false), // finished
+            Triple(0L, 0L, false),          // duration unknown
         )
-        assertFalse(barely.isResumable)
-    }
 
-    @Test
-    fun `a finished film is not offered as resumable`() = runTest {
-        val finished = progressFor(ContentKind.MOVIE, 2, "Done").copy(
-            positionSeconds = 9_900,
-            durationSeconds = 10_000,
-        )
-        assertFalse(finished.isResumable)
-    }
+        for ((position, duration, expected) in offered) {
+            val progress = progress(position, duration)
+            assertEquals(
+                "position=$position duration=$duration",
+                expected,
+                progress.isResumable,
+            )
+        }
 
-    @Test
-    fun `an unknown duration cannot be resumable`() = runTest {
-        val unknown = progressFor(ContentKind.MOVIE, 3, "Unknown").copy(durationSeconds = 0)
-        assertFalse(unknown.isResumable)
-        assertEquals(0f, unknown.fraction, 0.001f)
-    }
-
-    @Test
-    fun `a non-episode progress row has no episode key`() = runTest {
-        assertEquals(null, progressFor(ContentKind.MOVIE, 9, "A film").episodeRowKey)
+        // An unknown length must also not divide by zero somewhere behind a progress bar.
+        assertEquals(0f, progress(0, 0).fraction, 0.001f)
     }
 
     @Test

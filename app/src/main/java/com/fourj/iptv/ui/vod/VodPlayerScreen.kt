@@ -55,6 +55,7 @@ import com.fourj.iptv.domain.model.PlaybackProgress
 import com.fourj.iptv.ui.player.audioRenderersFactory
 import com.fourj.iptv.ui.player.isVideoDecodeFailure
 import com.fourj.iptv.ui.player.logSoftwareDecodeSupport
+import com.fourj.iptv.ui.player.redactCredentials
 import com.fourj.iptv.ui.player.softwareVideoRenderersFactory
 import androidx.tv.material3.Text
 import kotlinx.coroutines.delay
@@ -83,6 +84,15 @@ fun VodPlayerScreen(
      * numeric id and the only handle that finds it again is its row key.
      */
     progressKey: String,
+    /**
+     * The panel's numeric id, for a film. Zero for an episode, which has none.
+     *
+     * This has to be carried in rather than left to default, because it is how a "continue watching"
+     * row finds its film again: the row is stored with it, and the resume path looks the film up by
+     * it. Omitting it leaves every film's position stored against id 0, the lookup misses, and the
+     * row silently refuses to open.
+     */
+    contentId: Int,
     posterUrl: String?,
     resumePositionSeconds: Long,
     requestHeaders: Map<String, String>,
@@ -160,8 +170,9 @@ fun VodPlayerScreen(
                 playWhenReady = true
                 prepare()
                 // Logged because a wrong URL here is indistinguishable from a broken provider:
-                // both surfaces as a source error, and only the address says which.
-                Log.i(TAG, "vod playback: $streamUrl")
+                // both surfaces as a source error, and only the address says which. Redacted, because
+                // the address carries the account password.
+                Log.i(TAG, "vod playback: ${redactCredentials(streamUrl)}")
             }
     }
 
@@ -173,13 +184,13 @@ fun VodPlayerScreen(
         val listener = object : Player.Listener {
             override fun onPlayerError(error: PlaybackException) {
                 if (rebuilding) return
-                Log.w(TAG, "vod playback failed for $streamUrl", error)
+                Log.w(TAG, "vod playback failed for ${redactCredentials(streamUrl)}", error)
                 // A device can advertise HEVC support and still fail to decode it. Rebuild once
                 // around the software decoder rather than telling the viewer their television is
                 // incapable. Flipping the flag re-creates the player, which re-prepares this same
                 // stream from the stored resume position.
                 if (!triedSoftwareVideo && isVideoDecodeFailure(error)) {
-                    Log.i(TAG, "retrying $streamUrl with the software video decoder")
+                    Log.i(TAG, "retrying ${redactCredentials(streamUrl)} with the software video decoder")
                     rebuilding = true
                     triedSoftwareVideo = true
                     return
@@ -211,6 +222,7 @@ fun VodPlayerScreen(
                         durationSeconds = durationMs / 1000,
                         posterUrl = posterUrl,
                         updatedAtMillis = System.currentTimeMillis(),
+                        contentId = contentId,
                     ),
                 )
             }
@@ -246,6 +258,7 @@ fun VodPlayerScreen(
                     durationSeconds = durationMs / 1000,
                     posterUrl = posterUrl,
                     updatedAtMillis = System.currentTimeMillis(),
+                    contentId = contentId,
                 ),
             )
         }

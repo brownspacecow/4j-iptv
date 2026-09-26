@@ -121,8 +121,12 @@ fun Throwable.toUserMessage(): String = when (this) {
     is kotlinx.serialization.SerializationException ->
         // The panel cut a large response short. Retries are already exhausted by the time this
         // surfaces, so say something the user can act on rather than leaking JSON internals.
+        //
+        // Deliberately not naming what was cut off. This is reached from a live category, a film
+        // shelf and a series shelf alike, and a viewer whose *films* failed does not learn anything
+        // from being told to look at their channel list.
         "The provider's reply was cut off before it finished. This usually clears on a retry - " +
-            "if it keeps happening the channel list may be too large for this provider."
+            "if it keeps happening this list may be too large for this provider."
 
     is java.io.EOFException ->
         "The provider closed the connection before finishing its reply. Try again."

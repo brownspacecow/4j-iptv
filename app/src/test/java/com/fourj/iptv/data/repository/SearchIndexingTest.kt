@@ -1,25 +1,17 @@
 package com.fourj.iptv.data.repository
 
-import androidx.room.Room
-import com.fourj.iptv.data.local.SearchIndexDatabase
-import com.fourj.iptv.data.remote.XtreamNetwork
 import com.fourj.iptv.domain.model.ContentKind
 import com.fourj.iptv.domain.model.LiveCategory
-import com.fourj.iptv.domain.model.ProviderProfile
 import com.fourj.iptv.domain.model.VodCategory
 import com.fourj.iptv.domain.model.VodShelf
-import kotlinx.coroutines.Dispatchers
+import com.fourj.iptv.testing.PanelFixture
 import kotlinx.coroutines.runBlocking
-import okhttp3.mockwebserver.MockResponse
-import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
-import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
-import org.robolectric.RuntimeEnvironment
 
 /**
  * The background indexer, against a stand-in panel.
@@ -33,49 +25,17 @@ import org.robolectric.RuntimeEnvironment
 @RunWith(RobolectricTestRunner::class)
 class SearchIndexingTest {
 
-    private lateinit var server: MockWebServer
-    private lateinit var database: SearchIndexDatabase
-    private lateinit var repository: SearchRepository
-    private lateinit var profile: ProviderProfile
-
-    @Before
-    fun setUp() {
-        server = MockWebServer()
-        server.start()
-
-        database = Room.inMemoryDatabaseBuilder(
-            RuntimeEnvironment.getApplication(),
-            SearchIndexDatabase::class.java,
-        ).allowMainThreadQueries().build()
-
-        profile = ProviderProfile(
-            baseUrl = server.url("/").toString().trimEnd('/'),
-            username = "alice",
-            password = "secret",
-        )
-        repository = SearchRepository(
-            profile = profile,
-            database = database,
-            liveApi = XtreamNetwork.createApi(profile, debugLogging = false),
-            vodApi = XtreamNetwork.createVodApi(profile),
-            ioDispatcher = Dispatchers.IO,
-        )
-    }
+    private val panel = PanelFixture()
+    private val repository = panel.searchRepository()
 
     @After
-    fun tearDown() {
-        database.close()
-        server.shutdown()
-    }
+    fun tearDown() = panel.close()
 
     @Test
     fun `a shelf that cannot be read does not stop the run`() = runBlocking {
         enqueueChannels("USA One HD", "USA Two HD")
-        // Enqueued once per retry attempt, not once. The retry helper makes three requests before
-        // giving up, each consuming a response from the queue - enqueue a single broken body and the
-        // following shelves are served truncated JSON instead of their own, which turns this test
-        // into a measurement of the mock rather than of the code.
-        enqueueTruncated()
+        // Once per retry attempt - see PanelFixture.enqueueTimes.
+        panel.enqueueTimes(3, """[{"num":1,"name":"Broken"""")
         enqueueChannels("USA Three HD")
 
         val run = repository.indexEverything(
@@ -94,7 +54,7 @@ class SearchIndexingTest {
 
     @Test
     fun `a completed shelf is not fetched again on a second run`() = runBlocking {
-        enqueueChannels("USA One HD", "USA Two HD")
+        enqueueChannels("USA One HD")
         repository.indexEverything(listOf(LiveCategory("1", "First")), emptyList())
 
         val second = repository.indexEverything(listOf(LiveCategory("1", "First")), emptyList())
@@ -103,12 +63,12 @@ class SearchIndexingTest {
         // re-download shelves that are already done, or "index everything" would restart from zero
         // every time it was pressed.
         assertEquals(0, second.added)
-        assertEquals(1, server.requestCount)
+        assertEquals(1, panel.recordedRequests().size)
     }
 
     @Test
     fun `a failed shelf is retried on the next run rather than remembered as done`() = runBlocking {
-        enqueueTruncated()
+        panel.enqueueTimes(3, """[{"num":1,"name":"Broken"""")
         val first = repository.indexEverything(listOf(LiveCategory("1", "First")), emptyList())
         assertEquals(listOf("LIVE_CHANNEL:1"), first.skippedScopes)
 
@@ -124,7 +84,7 @@ class SearchIndexingTest {
 
     @Test
     fun `a film category shorter than one page is marked finished`() = runBlocking {
-        enqueue("""[{"stream_id":1,"name":"A Film","container_extension":"mp4"}]""")
+        panel.enqueue("""[{"stream_id":1,"name":"A Film","container_extension":"mp4"}]""")
 
         val run = repository.indexEverything(
             liveCategories = emptyList(),
@@ -137,7 +97,7 @@ class SearchIndexingTest {
 
     @Test
     fun `a series shelf is walked with the series endpoint`() = runBlocking {
-        enqueue("""[{"series_id":7,"name":"A Show"}]""")
+        panel.enqueue("""[{"series_id":7,"name":"A Show"}]""")
 
         val run = repository.indexEverything(
             liveCategories = emptyList(),
@@ -145,10 +105,10 @@ class SearchIndexingTest {
         )
 
         assertEquals(1, run.added)
-        val request = server.takeRequest()
+        val request = panel.recordedRequests()
         assertTrue(
-            "expected get_series, got ${request.path}",
-            request.path!!.contains("action=get_series"),
+            "expected get_series, got $request",
+            request.any { it.contains("action=get_series") },
         )
     }
 
@@ -166,7 +126,7 @@ class SearchIndexingTest {
      */
     @Test
     fun `a numeric series category id is still walked as a series`() = runBlocking {
-        enqueue("""[{"series_id":9,"name":"SpongeBob SquarePants"}]""")
+        panel.enqueue("""[{"series_id":9,"name":"SpongeBob SquarePants"}]""")
 
         val run = repository.indexEverything(
             liveCategories = emptyList(),
@@ -174,9 +134,7 @@ class SearchIndexingTest {
         )
 
         assertEquals(1, run.added)
-        val paths = generateSequence { server.takeRequest(200, java.util.concurrent.TimeUnit.MILLISECONDS) }
-            .map { it.path.orEmpty() }
-            .toList()
+        val paths = panel.recordedRequests()
         assertTrue("expected get_series, got $paths", paths.any { it.contains("action=get_series") })
         assertTrue(
             "a series shelf must never be paged as films: $paths",
@@ -194,7 +152,7 @@ class SearchIndexingTest {
              {"stream_id":2,"name":"SpongeBob Slightly Squidward","category_id":"10"},
              {"stream_id":3,"name":"The Incredi
         """.trimIndent()
-        enqueue(truncated)
+        panel.enqueue(truncated)
 
         val run = repository.indexEverything(
             liveCategories = emptyList(),
@@ -207,7 +165,7 @@ class SearchIndexingTest {
             "a truncated shelf must not count as skipped: ${run.skippedScopes}",
             run.skippedScopes.isEmpty(),
         )
-        assertEquals(2, database.searchIndexDao().search("spongebob", 10).size)
+        assertEquals(2, panel.searchIndexDao().search("spongebob", 10).size)
     }
 
     @Test
@@ -215,7 +173,7 @@ class SearchIndexingTest {
         // The opposite case, and the reason the salvage is not unconditional. Nothing completed, so
         // there is nothing to keep - and reporting that as an indexed shelf would leave it looking
         // like a provider with no films in it.
-        enqueue("""[{"stream_id":1,"na""")
+        panel.enqueue("""[{"stream_id":1,"na""")
 
         val run = repository.indexEverything(
             liveCategories = emptyList(),
@@ -226,22 +184,8 @@ class SearchIndexingTest {
         assertEquals(listOf("MOVIE:570"), run.skippedScopes)
     }
 
-    /**
-     * A response cut off mid-array, which is what this provider does to a large payload.
-     *
-     * Enqueued once per retry attempt: the retry helper issues three requests before giving up, and
-     * each consumes a response from the queue.
-     */
-    private fun enqueueTruncated() {
-        repeat(3) { enqueue("""[{"num":1,"name":"Broken""") }
-    }
-
     private fun enqueueChannels(vararg names: String) {
         val rows = names.joinToString(",") { """{"num":1,"name":"$it","stream_id":1,"category_id":"1"}""" }
-        enqueue("[$rows]")
-    }
-
-    private fun enqueue(body: String) {
-        server.enqueue(MockResponse().setBody(body).setHeader("Content-Type", "application/json"))
+        panel.enqueue("[$rows]")
     }
 }

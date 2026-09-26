@@ -109,10 +109,15 @@ data class PlaybackProgress(
     /**
      * The panel's numeric id, meaningful for films and live channels.
      *
-     * Carried because it is what the stored row holds, and because a film is still looked up by it.
-     * Zero for an episode, which has no numeric id - [contentKey] is the handle there.
+     * Deliberately has no default. A film is looked up again by this id when a "continue watching"
+     * row is resumed, so a row saved without it is stored against zero, the lookup misses, and the
+     * card silently does nothing when pressed. That shipped: the player built this without passing
+     * the id and defaulted to zero, and no test failed because the value was legal.
+     *
+     * An episode genuinely has no numeric id, so it passes `0` on purpose - [contentKey] is the
+     * handle there. Making that explicit at every call site is the point.
      */
-    val contentId: Int = 0,
+    val contentId: Int,
 ) {
     /**
      * The episode's row key, when this is an episode.

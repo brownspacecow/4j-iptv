@@ -325,6 +325,7 @@ fun AppShell(
     if (current != null) {
         when (current) {
             is VodPlayback.Film -> VodPlayerScreen(
+                contentId = current.id,
                 title = current.title,
                 subtitle = null,
                 streamUrl = current.url,
@@ -353,6 +354,8 @@ fun AppShell(
             )
 
             is VodPlayback.EpisodePlayback -> VodPlayerScreen(
+                // An episode has no numeric id; its row key is the handle.
+                contentId = 0,
                 title = current.title,
                 subtitle = current.subtitle,
                 streamUrl = current.url,
