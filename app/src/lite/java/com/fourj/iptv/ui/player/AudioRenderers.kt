@@ -16,3 +16,6 @@ import androidx.media3.exoplayer.RenderersFactory
  */
 internal fun audioRenderersFactory(context: Context): RenderersFactory =
     DefaultRenderersFactory(context)
+        // If the preferred decoder for a format fails at runtime, try the others before giving
+        // up on the channel. Cheap insurance on a device whose codec support is unknown.
+        .setEnableDecoderFallback(true)

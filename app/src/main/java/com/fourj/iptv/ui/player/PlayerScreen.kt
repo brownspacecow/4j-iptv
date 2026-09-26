@@ -27,12 +27,15 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import android.util.Log
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.Tracks
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.AspectRatioFrameLayout
@@ -77,6 +80,29 @@ fun PlayerScreen(
 
     val player = remember {
         ExoPlayer.Builder(context, audioRenderersFactory(context))
+            // Tuned for live IPTV, not for on-demand video.
+            //
+            // ExoPlayer's defaults assume a seekable, well-behaved file: 2.5s of buffer before
+            // playback starts and 5s to rebuild after a stall. A live MPEG-TS feed from a panel
+            // is none of those things - it arrives at whatever rate the origin feels like, and
+            // starting only 2.5s from the live edge means the first seconds of playback spend
+            // most of their time with an empty buffer. That is the stutter reported a few
+            // seconds after picking a channel.
+            //
+            // A few seconds of extra delay at startup is a good trade for not stuttering.
+            .setLoadControl(
+                DefaultLoadControl.Builder()
+                    .setBufferDurationsMs(
+                        /* minBufferMs = */ 15_000,
+                        /* maxBufferMs = */ 50_000,
+                        /* bufferForPlaybackMs = */ 5_000,
+                        /* bufferForPlaybackAfterRebufferMs = */ 10_000,
+                    )
+                    // Never evict samples to hit a byte target. On a live stream that would
+                    // mean discarding data and creating the very gaps we are avoiding.
+                    .setPrioritizeTimeOverSizeThresholds(true)
+                    .build(),
+            )
             .setMediaSourceFactory(
                 DefaultMediaSourceFactory(
                     // Panel-issued headers matter: without the User-Agent/Referer a channel
@@ -88,8 +114,6 @@ fun PlayerScreen(
             )
             .build()
             .apply {
-                // Providers buffer aggressively; a longer buffer hides the stalls that would
-                // otherwise show as a freeze every few seconds.
                 setAudioAttributes(
                     AudioAttributes.Builder()
                         .setUsage(C.USAGE_MEDIA)
@@ -108,8 +132,47 @@ fun PlayerScreen(
 
     DisposableEffect(player) {
         val listener = object : Player.Listener {
+
             override fun onPlayerError(error: PlaybackException) {
-                errorText = "This channel would not play. It may be offline or restricted."
+                // Always log the cause. The previous version swallowed it and showed a generic
+                // message, which made a channel that was merely unreachable look identical to a
+                // channel that was genuinely dead - and left nothing to debug with.
+                Log.w(TAG, "playback failed for $streamUrl", error)
+                errorText = describePlaybackError(error)
+            }
+
+            /**
+             * Report what the stream actually carries.
+             *
+             * Some channels arrive with no audio at all, and some carry audio the device cannot
+             * decode. Both look identical on screen - a silent picture - so the format and the
+             * selected track are logged to tell them apart.
+             */
+            override fun onTracksChanged(tracks: Tracks) {
+                val audio = tracks.groups.firstOrNull { it.type == C.TRACK_TYPE_AUDIO }
+                if (audio == null || audio.length == 0) {
+                    Log.w(TAG, "stream advertises no audio track at all (groups=${tracks.groups.size})")
+                    return
+                }
+                // Log every track in the group, selected or not. "Present but not selected" is
+                // the interesting case: the stream has audio and the device refused it, so the
+                // format is what identifies the problem.
+                for (i in 0 until audio.length) {
+                    val f = audio.getTrackFormat(i)
+                    Log.i(
+                        TAG,
+                        "audio[$i] mime=${f.sampleMimeType} rate=${f.sampleRate} " +
+                            "channels=${f.channelCount} supported=${audio.isTrackSupported(i)} " +
+                            "selected=${audio.isTrackSelected(i)} " +
+                            "typeSelected=${tracks.isTypeSelected(C.TRACK_TYPE_AUDIO)}",
+                    )
+                }
+            }
+
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == Player.STATE_BUFFERING) {
+                    Log.i(TAG, "buffering (target ${player.bufferedPercentage}% buffered)")
+                }
             }
         }
         player.addListener(listener)
@@ -231,5 +294,6 @@ private fun PlayerOverlay(
 }
 
 private const val OVERLAY_TIMEOUT_MS = 4_000L
+private const val TAG = "4J"
 private const val DEFAULT_USER_AGENT =
     "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
