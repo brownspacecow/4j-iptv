@@ -9,6 +9,7 @@ import com.fourj.iptv.data.local.LiveChannelEntity
 import com.fourj.iptv.data.local.replaceCategoryChannels
 import com.fourj.iptv.data.remote.StreamUrls
 import com.fourj.iptv.data.remote.XtreamNetwork
+import com.fourj.iptv.data.remote.retrying
 import com.fourj.iptv.data.remote.xtream.LiveCategoryDto
 import com.fourj.iptv.data.remote.xtream.LiveStreamDto
 import com.fourj.iptv.data.remote.xtream.XtreamApi
@@ -47,7 +48,7 @@ class LiveRepository(
      * on its own means nothing - the body has to be checked.
      */
     suspend fun login(): Result<ProviderProfile> = withContext(ioDispatcher) {
-        runCatching {
+        retrying(label = "login") {
             val response = api.login()
             val user = response.userInfo
                 ?: error("The provider rejected these credentials.")
@@ -61,8 +62,9 @@ class LiveRepository(
 
     /** The categories list is small, so it is always fetched on connect. */
     suspend fun refreshCategories(): Result<List<LiveCategory>> = withContext(ioDispatcher) {
-        runCatching {
-            val categories = api.liveCategories().mapNotNull { it.toEntity() }
+        retrying(label = "get_live_categories") {
+            api.liveCategories().mapNotNull { it.toEntity() }
+        }.map { categories ->
             val ordered = categories.sortedBy { it.sortOrder }
             categoryDao.upsertAll(ordered)
             ordered.map { LiveCategory(it.categoryId, it.categoryName) }
@@ -90,8 +92,10 @@ class LiveRepository(
             runCatching {
                 if (!force && syncDao.isSynced(categoryId)) return@runCatching
 
-                val dtos = api.liveStreams(categoryId = categoryId)
-                val entities = dtos.mapIndexedNotNull { index, dto -> dto.toEntity(index) }
+                val entities = retrying(label = "get_live_streams[$categoryId]") {
+                    api.liveStreams(categoryId = categoryId)
+                }.getOrThrow().mapIndexedNotNull { index, dto -> dto.toEntity(index) }
+
                 database.replaceCategoryChannels(categoryId, entities, System.currentTimeMillis())
             }
         }

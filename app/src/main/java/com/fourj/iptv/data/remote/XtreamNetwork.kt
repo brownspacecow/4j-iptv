@@ -82,10 +82,20 @@ fun Throwable.toUserMessage(): String = when (this) {
     is retrofit2.HttpException -> when (code()) {
         401, 403 -> "The provider rejected these credentials."
         404 -> "This server has no Xtream Codes API at that address. Check the port."
+        408 -> "The provider took too long to answer."
         429 -> "Too many requests. Wait a moment and try again."
         in 500..599 -> "The provider's server is having trouble (${code()}). Try again shortly."
         else -> "The provider returned an unexpected response (${code()})."
     }
+
+    is kotlinx.serialization.SerializationException ->
+        // The panel cut a large response short. Retries are already exhausted by the time this
+        // surfaces, so say something the user can act on rather than leaking JSON internals.
+        "The provider's reply was cut off before it finished. This usually clears on a retry - " +
+            "if it keeps happening the channel list may be too large for this provider."
+
+    is java.io.EOFException ->
+        "The provider closed the connection before finishing its reply. Try again."
 
     is IOException -> when (this) {
         is java.net.SocketTimeoutException -> "The provider took too long to respond."

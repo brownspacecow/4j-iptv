@@ -6,10 +6,13 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -66,6 +69,12 @@ fun LoginScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                // The soft keyboard takes the lower half of a television screen. Without these
+                // two the Username and Password fields sit underneath it and cannot be reached at
+                // all; imePadding shrinks the content and the scroll lets the focused field be
+                // brought back into view.
+                .imePadding()
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = uiScale.horizontalMarginDp.dp, vertical = 32.dp),
             verticalArrangement = Arrangement.Center,
         ) {
