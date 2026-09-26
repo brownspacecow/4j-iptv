@@ -75,9 +75,9 @@ sdk.dir=/path/to/Android/sdk
 Then:
 
 ```bash
-./gradlew :app:testFullDebugUnitTest     # 95 unit tests
-./gradlew :app:assembleFullDebug         # APK with software audio (~43 MB debug)
-./gradlew :app:assembleLiteDebug         # smaller APK, hardware audio only
+./gradlew :app:testFullDebugUnitTest     # 114 unit tests
+./gradlew :app:assembleFullDebug         # APK with software audio + video fallback (~43 MB debug)
+./gradlew :app:assembleLiteDebug         # smaller APK, no software decoders
 ```
 
 Both flavors are also produced per ABI in a release build (`assembleFullRelease`), which is where
@@ -97,15 +97,26 @@ The unit tests run on the JVM with no device. Two of them are worth knowing abou
 `VodMigrationTest` builds a version 1 database by hand, migrates it, then opens the result with Room
 so the migrated schema is checked against the entities the app actually declares.
 
-## Silent channels
+## Codecs the hardware cannot always handle
 
-Many IPTV providers carry audio in **AC-3 / E-AC-3 / DTS / MP2**, which low-end television hardware
-often cannot decode. The result is a picture with no sound, which is indistinguishable from a dead
-stream and sends people hunting for a network problem that does not exist.
+Many IPTV providers carry audio in **AC-3 / E-AC-3 / DTS / MP2** and video in **HEVC**, which
+low-end television hardware often cannot decode.
+
+Audio that cannot be decoded gives a picture with no sound — indistinguishable from a dead stream,
+and it sends people hunting for a network problem that does not exist. Video that cannot be decoded
+just fails.
 
 The `full` flavor bundles the [NextLib](https://github.com/anilbeesetti/nextlib) FFmpeg software
-decoders to fix this. The `lite` flavor omits them and is much smaller, but channels using those
-codecs will be silent. **If your provider uses Dolby audio, install `full`.**
+decoders to cover both. The `lite` flavor omits them and is roughly half the size, but channels
+using those codecs will be silent or will not play. **If your provider uses Dolby audio or HEVC,
+install `full`.**
+
+Software video is a **fallback, not the default**. Hardware decoding is faster and far cheaper on
+battery, so it always gets first refusal. Software video is only used when the hardware decoder
+has actually failed, and the app retries the stream once with the software decoder in front. That
+retry exists because a device can advertise HEVC support, have ExoPlayer report the format as
+supported, and then fail to decode it — appending the software decoder behind the hardware one does
+not help in that case, because the hardware renderer has already claimed the track.
 
 This is why the project is GPL-3.0: NextLib is GPL-3.0, and linking it means the combined work has
 to be GPL-3.0. It also ships FFmpeg under LGPLv3 — see [Third-party notices](#third-party-notices).

@@ -53,6 +53,9 @@ import com.fourj.iptv.ui.player.describePlaybackError
 import com.fourj.iptv.domain.model.ContentKind
 import com.fourj.iptv.domain.model.PlaybackProgress
 import com.fourj.iptv.ui.player.audioRenderersFactory
+import com.fourj.iptv.ui.player.isVideoDecodeFailure
+import com.fourj.iptv.ui.player.logSoftwareDecodeSupport
+import com.fourj.iptv.ui.player.softwareVideoRenderersFactory
 import androidx.tv.material3.Text
 import kotlinx.coroutines.delay
 
@@ -95,6 +98,7 @@ fun VodPlayerScreen(
     var positionMs by remember { mutableLongStateOf(0L) }
     var durationMs by remember { mutableLongStateOf(0L) }
     var errorText by remember { mutableStateOf<String?>(null) }
+    var triedSoftwareVideo by remember { mutableStateOf(false) }
     val controlsFocus = remember { FocusRequester() }
 
     /**
@@ -115,8 +119,16 @@ fun VodPlayerScreen(
      */
     var controlsFocused by remember { mutableStateOf(false) }
 
-    val player = remember {
-        ExoPlayer.Builder(context, audioRenderersFactory(context))
+    val player = remember(triedSoftwareVideo) {
+        logSoftwareDecodeSupport()
+        ExoPlayer.Builder(
+            context,
+            if (triedSoftwareVideo) {
+                softwareVideoRenderersFactory(context)
+            } else {
+                audioRenderersFactory(context)
+            },
+        )
             // On-demand is the case ExoPlayer's defaults are actually tuned for: a seekable file
             // of known length, rather than an endless live edge.
             .setMediaSourceFactory(
@@ -154,9 +166,24 @@ fun VodPlayerScreen(
     }
 
     DisposableEffect(player) {
+        // Set while this player is being replaced, so its teardown cannot report the very failure
+        // that caused the replacement as a real error to the viewer.
+        var rebuilding = false
+
         val listener = object : Player.Listener {
             override fun onPlayerError(error: PlaybackException) {
+                if (rebuilding) return
                 Log.w(TAG, "vod playback failed for $streamUrl", error)
+                // A device can advertise HEVC support and still fail to decode it. Rebuild once
+                // around the software decoder rather than telling the viewer their television is
+                // incapable. Flipping the flag re-creates the player, which re-prepares this same
+                // stream from the stored resume position.
+                if (!triedSoftwareVideo && isVideoDecodeFailure(error)) {
+                    Log.i(TAG, "retrying $streamUrl with the software video decoder")
+                    rebuilding = true
+                    triedSoftwareVideo = true
+                    return
+                }
                 errorText = describePlaybackError(error)
             }
         }
