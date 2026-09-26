@@ -5,9 +5,11 @@ import androidx.room.Room
 import com.fourj.iptv.data.local.CredentialStore
 import com.fourj.iptv.data.local.FourJDatabase
 import com.fourj.iptv.data.local.MIGRATION_1_2
+import com.fourj.iptv.data.local.VodDatabase
 import com.fourj.iptv.data.remote.XtreamNetwork
 import com.fourj.iptv.data.repository.EpgRepository
 import com.fourj.iptv.data.repository.LiveRepository
+import com.fourj.iptv.data.repository.VodRepository
 import com.fourj.iptv.domain.model.ProviderProfile
 import okhttp3.OkHttpClient
 
@@ -56,7 +58,25 @@ class AppContainer(context: Context) {
         api = apiFor(profile),
     )
 
+    private val vodDatabase: VodDatabase by lazy {
+        Room.databaseBuilder(appContext, VodDatabase::class.java, VOD_DATABASE_NAME).build()
+    }
+
+    fun vodRepository(profile: ProviderProfile): VodRepository = VodRepository(
+        profile = profile,
+        database = vodDatabase,
+        api = XtreamNetwork.createVodApi(profile),
+    )
+
     private companion object {
         const val DATABASE_NAME = "fourj.db"
+
+        /**
+         * A separate database file from live TV.
+         *
+         * The film cache is large and disposable in a way the live cache is not, and keeping them
+         * apart means a schema change to one never forces a migration on the other.
+         */
+        const val VOD_DATABASE_NAME = "fourj-vod.db"
     }
 }

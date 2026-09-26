@@ -31,7 +31,7 @@ internal suspend fun <T> retrying(
     var lastFailure: Throwable? = null
 
     for (attempt in 1..attempts) {
-        val outcome = runCatching { block() }
+        val outcome = runCatchingCancellable { block() }
         val value = outcome.getOrNull()
         if (outcome.isSuccess && value != null) {
             if (attempt > 1) Log.i(TAG, "$label succeeded on attempt $attempt")
@@ -67,6 +67,23 @@ internal fun Throwable.isTransientNetworkFailure(): Boolean = when (this) {
     is kotlinx.serialization.SerializationException -> true
     else -> false
 }
+
+/**
+ * `runCatching` that lets cancellation through.
+ *
+ * `kotlin.runCatching` catches `CancellationException` and folds it into a failed `Result`, which
+ * is wrong: cancellation is control flow, not an error. Swallowing it means a coroutine that was
+ * meant to stop carries on, and it surfaces in the log as a spurious failure every time a
+ * `flatMapLatest` supersedes an in-flight request - which is ordinary, not something to report.
+ */
+internal inline fun <T> runCatchingCancellable(block: () -> T): Result<T> =
+    try {
+        Result.success(block())
+    } catch (cancellation: kotlinx.coroutines.CancellationException) {
+        throw cancellation
+    } catch (throwable: Throwable) {
+        Result.failure(throwable)
+    }
 
 private const val DEFAULT_ATTEMPTS = 3
 private const val DEFAULT_INITIAL_DELAY_MILLIS = 500L

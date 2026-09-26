@@ -1,0 +1,53 @@
+package com.fourj.iptv.data.remote.xtream
+
+import retrofit2.http.GET
+import retrofit2.http.Query
+
+/**
+ * VOD and series, the on-demand half of the Xtream Codes API.
+ *
+ * Same shape as [XtreamApi]: credentials are appended by [XtreamAuthInterceptor], so only the
+ * action and its own parameters appear here.
+ *
+ * Categories are fetched one at a time, for the same reason live channels are: a provider's film
+ * library is easily six figures, and asking for all of it in one call produces a response so large
+ * that panels truncate it.
+ */
+interface VodApi {
+
+    @GET("player_api.php")
+    suspend fun vodCategories(
+        @Query("action") action: String = "get_vod_categories",
+    ): List<VodCategoryDto>
+
+    @GET("player_api.php")
+    suspend fun vodStreams(
+        @Query("action") action: String = "get_vod_streams",
+        @Query("category_id") categoryId: String? = null,
+        @Query("limit") limit: Int? = null,
+        @Query("start") start: Int? = null,
+    ): List<VodStreamDto>
+
+    @GET("player_api.php")
+    suspend fun vodInfo(
+        @Query("action") action: String = "get_vod_info",
+        @Query("vod_id") vodId: Int,
+    ): VodStreamDto?
+
+    @GET("player_api.php")
+    suspend fun seriesCategories(
+        @Query("action") action: String = "get_series_categories",
+    ): List<SeriesCategoryDto>
+
+    @GET("player_api.php")
+    suspend fun series(
+        @Query("action") action: String = "get_series",
+        @Query("category_id") categoryId: String? = null,
+    ): List<SeriesDto>
+
+    @GET("player_api.php")
+    suspend fun seriesInfo(
+        @Query("action") action: String = "get_series_info",
+        @Query("series_id") seriesId: Int,
+    ): SeriesInfoResponse
+}

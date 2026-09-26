@@ -1,6 +1,7 @@
 package com.fourj.iptv.data.remote
 
 import com.fourj.iptv.domain.model.LiveChannel
+import com.fourj.iptv.domain.model.Movie
 import com.fourj.iptv.domain.model.ProviderProfile
 
 /**
@@ -64,4 +65,24 @@ object StreamUrls {
         val lower = candidate.lowercase()
         return if (lower.startsWith("http://") || lower.startsWith("https://")) candidate else null
     }
+
+    /**
+     * The playable URL for an on-demand film.
+     *
+     * Same shape as a live stream but without the container extension: films are served from a
+     * fixed `movie/` path and the panel picks the container itself.
+     */
+    fun movie(profile: ProviderProfile, movie: Movie): String = buildString {
+        append(profile.baseUrl)
+        append("/movie/")
+        append(profile.username)
+        append('/')
+        append(profile.password)
+        append('/')
+        append(movie.id)
+        append('.')
+        append(movie.containerExtension?.takeIf { it.isNotBlank() } ?: DEFAULT_MOVIE_EXTENSION)
+    }
 }
+
+private const val DEFAULT_MOVIE_EXTENSION = "mp4"

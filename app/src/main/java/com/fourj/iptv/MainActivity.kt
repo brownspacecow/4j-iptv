@@ -11,8 +11,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import com.fourj.iptv.di.AppContainer
 import com.fourj.iptv.ui.common.rememberUiScale
-import com.fourj.iptv.ui.live.LiveScreen
 import com.fourj.iptv.ui.login.LoginScreen
+import com.fourj.iptv.ui.shell.AppShell
 import com.fourj.iptv.ui.theme.FourJTheme
 import com.fourj.iptv.domain.model.ProviderProfile
 
@@ -51,7 +51,7 @@ private fun FourJRoot(container: AppContainer) {
             onConnected = { profile = container.credentialStore.load() },
         )
     } else {
-        LiveScreen(
+        AppShell(
             container = container,
             profile = current,
             onSignOut = {

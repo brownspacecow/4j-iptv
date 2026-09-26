@@ -1,4 +1,4 @@
-package com.fourj.iptv.data.repository
+﻿package com.fourj.iptv.data.repository
 
 import com.fourj.iptv.data.local.FourJDatabase
 import com.fourj.iptv.data.local.LiveCategoryDao
@@ -9,6 +9,7 @@ import com.fourj.iptv.data.local.LiveChannelEntity
 import com.fourj.iptv.data.local.replaceCategoryChannels
 import com.fourj.iptv.data.remote.StreamUrls
 import com.fourj.iptv.data.remote.XtreamNetwork
+import com.fourj.iptv.data.remote.runCatchingCancellable
 import com.fourj.iptv.data.remote.retrying
 import com.fourj.iptv.data.remote.xtream.LiveCategoryDto
 import com.fourj.iptv.data.remote.xtream.LiveStreamDto
@@ -89,8 +90,8 @@ class LiveRepository(
      */
     suspend fun ensureCategoryLoaded(categoryId: String, force: Boolean = false): Result<Unit> =
         withContext(ioDispatcher) {
-            runCatching {
-                if (!force && syncDao.isSynced(categoryId)) return@runCatching
+            runCatchingCancellable {
+                if (!force && syncDao.isSynced(categoryId)) return@runCatchingCancellable
 
                 val entities = retrying(label = "get_live_streams[$categoryId]") {
                     api.liveStreams(categoryId = categoryId)
@@ -153,3 +154,4 @@ internal fun LiveChannelEntity.toModel() = LiveChannel(
     hasArchive = hasArchive,
     archiveDurationDays = archiveDurationDays,
 )
+

@@ -1,5 +1,6 @@
 package com.fourj.iptv.data.remote
 
+import com.fourj.iptv.data.remote.xtream.VodApi
 import com.fourj.iptv.data.remote.xtream.XtreamApi
 import com.fourj.iptv.data.remote.xtream.XtreamAuthInterceptor
 import com.fourj.iptv.domain.model.ProviderProfile
@@ -60,6 +61,28 @@ object XtreamNetwork {
             .addConverterFactory(json.asConverterFactory(JSON_MEDIA_TYPE.toMediaType()))
             .build()
             .create(XtreamApi::class.java)
+
+    /**
+     * The VOD half of the API.
+     *
+     * A separate [Retrofit] instance and therefore a separate OkHttp client, because the live
+     * client's short API timeouts are wrong for film metadata: a series with hundreds of episodes
+     * is a big response, and timing it out at 30s would fail requests that are merely slow.
+     */
+    fun createVodApi(profile: ProviderProfile): VodApi =
+        Retrofit.Builder()
+            .baseUrl(profile.baseUrl.trimEnd('/') + "/")
+            .client(
+                OkHttpClient.Builder()
+                    .retryOnConnectionFailure(true)
+                    .addInterceptor(XtreamAuthInterceptor(profile.username, profile.password))
+                    .connectTimeout(20, TimeUnit.SECONDS)
+                    .readTimeout(90, TimeUnit.SECONDS)
+                    .build(),
+            )
+            .addConverterFactory(json.asConverterFactory(JSON_MEDIA_TYPE.toMediaType()))
+            .build()
+            .create(VodApi::class.java)
 
     private fun baseBuilder(): OkHttpClient.Builder = OkHttpClient.Builder()
         .retryOnConnectionFailure(true)
