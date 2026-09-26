@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -34,6 +35,7 @@ import coil.compose.AsyncImage
 import com.fourj.iptv.di.AppContainer
 import com.fourj.iptv.domain.model.LiveChannel
 import com.fourj.iptv.domain.model.ProviderProfile
+import com.fourj.iptv.ui.epg.LiveNowRow
 import com.fourj.iptv.ui.theme.LocalUiScale
 
 /**
@@ -55,8 +57,10 @@ fun LiveScreen(
     ),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val nowNext by viewModel.nowNext.collectAsStateWithLifecycle()
     val uiScale = LocalUiScale.current
     val error = state.error
+    val nowSeconds = remember(state.channels) { System.currentTimeMillis() / 1000 }
 
     // Playing takes over the whole screen, the way a set-top box does.
     state.playing?.let { channel ->
@@ -65,6 +69,7 @@ fun LiveScreen(
             channels = state.visibleChannels,
             streamUrl = viewModel.streamUrl(channel),
             requestHeaders = viewModel.requestHeaders(channel),
+            nowNext = nowNext[channel.streamId],
             onChannelChange = viewModel::play,
             onBack = viewModel::onPlaybackFinished,
             modifier = modifier,
@@ -129,6 +134,22 @@ fun LiveScreen(
 
             Spacer(Modifier.height(8.dp))
 
+            // "On now" across the channels already loaded. Free: it reads the same cache the
+            // channel list filled.
+            if (nowNext.isNotEmpty() && state.visibleChannels.isNotEmpty()) {
+                LiveNowRow(
+                    channels = state.visibleChannels,
+                    nowNextByStream = nowNext,
+                    nowSeconds = nowSeconds,
+                    onSelect = viewModel::play,
+                    modifier = Modifier.padding(
+                        horizontal = uiScale.horizontalMarginDp.dp,
+                        vertical = 8.dp,
+                    ),
+                )
+                Spacer(Modifier.height(12.dp))
+            }
+
             when {
                 error != null -> Message(text = error, color = MaterialTheme.colorScheme.error)
 
@@ -151,6 +172,8 @@ fun LiveScreen(
                         val channel = state.visibleChannels[index]
                         ChannelRow(
                             channel = channel,
+                            nowNext = nowNext[channel.streamId],
+                            nowSeconds = nowSeconds,
                             logoSizeDp = uiScale.logoSizeDp,
                             onClick = { viewModel.play(channel) },
                         )
@@ -164,6 +187,8 @@ fun LiveScreen(
 @Composable
 private fun ChannelRow(
     channel: LiveChannel,
+    nowNext: com.fourj.iptv.ui.live.NowNext?,
+    nowSeconds: Long,
     logoSizeDp: Int,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -191,21 +216,12 @@ private fun ChannelRow(
                 )
                 Spacer(Modifier.width(16.dp))
             }
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = channel.name,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    text = channel.containerExtension?.uppercase()
-                        ?: (if (channel.directSource != null) "DIRECT" else "TS"),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-            }
+            com.fourj.iptv.ui.epg.NowNextRow(
+                channelName = channel.name,
+                nowNext = nowNext,
+                nowSeconds = nowSeconds,
+                modifier = Modifier.weight(1f),
+            )
         }
     }
 }

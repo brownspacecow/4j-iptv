@@ -4,7 +4,9 @@ import android.content.Context
 import androidx.room.Room
 import com.fourj.iptv.data.local.CredentialStore
 import com.fourj.iptv.data.local.FourJDatabase
+import com.fourj.iptv.data.local.MIGRATION_1_2
 import com.fourj.iptv.data.remote.XtreamNetwork
+import com.fourj.iptv.data.repository.EpgRepository
 import com.fourj.iptv.data.repository.LiveRepository
 import com.fourj.iptv.domain.model.ProviderProfile
 import okhttp3.OkHttpClient
@@ -33,8 +35,11 @@ class AppContainer(context: Context) {
         Room.databaseBuilder(appContext, FourJDatabase::class.java, DATABASE_NAME)
             // No fallbackToDestructiveMigration: silently wiping a user's cache on a schema change
             // is how apps lose state. Add real migrations and test them instead.
+            .addMigrations(MIGRATION_1_2)
             .build()
     }
+
+    private fun apiFor(profile: ProviderProfile) = XtreamNetwork.createApi(profile, debugLogging = false)
 
     /**
      * Repositories are per profile, because the HTTP client is built around one provider's address
@@ -43,6 +48,12 @@ class AppContainer(context: Context) {
     fun liveRepository(profile: ProviderProfile): LiveRepository = LiveRepository(
         profile = profile,
         database = database,
+        api = apiFor(profile),
+    )
+
+    fun epgRepository(profile: ProviderProfile): EpgRepository = EpgRepository(
+        epgDao = database.epgDao(),
+        api = apiFor(profile),
     )
 
     private companion object {

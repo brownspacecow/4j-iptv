@@ -6,6 +6,7 @@ import androidx.compose.foundation.focusable
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -60,6 +61,7 @@ fun PlayerScreen(
     channels: List<LiveChannel>,
     streamUrl: String,
     requestHeaders: Map<String, String>,
+    nowNext: com.fourj.iptv.ui.live.NowNext?,
     onChannelChange: (LiveChannel) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
@@ -68,6 +70,16 @@ fun PlayerScreen(
     val rootFocus = remember { androidx.compose.ui.focus.FocusRequester() }
     var overlayVisible by remember { mutableStateOf(true) }
     var errorText by remember { mutableStateOf<String?>(null) }
+    // Ticks while the overlay is up so the elapsed-time bar moves, then stops.
+    var nowSeconds by remember { mutableStateOf(System.currentTimeMillis() / 1000) }
+    LaunchedEffect(overlayVisible) {
+        if (overlayVisible) {
+            while (overlayVisible) {
+                nowSeconds = System.currentTimeMillis() / 1000
+                delay(1000)
+            }
+        }
+    }
 
     // A TV screen that blanks mid-film is worse than one that is slightly power hungry.
     val activity = context as? android.app.Activity
@@ -212,7 +224,10 @@ fun PlayerScreen(
     }
 
     // Wake the overlay whenever the user does something.
-    LaunchedEffect(channel.streamId) { overlayVisible = true }
+    LaunchedEffect(channel.streamId) {
+        overlayVisible = true
+        nowSeconds = System.currentTimeMillis() / 1000
+    }
 
     BackHandler { onBack() }
 
@@ -262,6 +277,8 @@ fun PlayerScreen(
             PlayerOverlay(
                 channelName = channel.name,
                 error = errorText,
+                nowNext = nowNext,
+                nowSeconds = nowSeconds,
                 modifier = Modifier
                     .align(Alignment.BottomStart)
                     .padding(24.dp),
@@ -276,14 +293,14 @@ fun PlayerScreen(
 private fun PlayerOverlay(
     channelName: String,
     error: String?,
+    nowNext: com.fourj.iptv.ui.live.NowNext?,
+    nowSeconds: Long,
     modifier: Modifier = Modifier,
 ) {
-    Row(
+    Column(
         modifier = modifier
             .background(Color(0xCC000000))
             .padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         if (error != null) {
             androidx.tv.material3.Text(
@@ -291,13 +308,15 @@ private fun PlayerOverlay(
                 style = androidx.tv.material3.MaterialTheme.typography.bodyMedium,
                 color = Color(0xFFFF6B6B),
             )
-        } else {
-            androidx.tv.material3.Text(
-                text = channelName,
-                style = androidx.tv.material3.MaterialTheme.typography.titleMedium,
-                color = Color.White,
-            )
+            return@Column
         }
+        // The guide goes in the overlay rather than replacing the channel name: the name
+        // identifies what you are watching, the programme says why you are still watching it.
+        com.fourj.iptv.ui.epg.NowNextRow(
+            channelName = channelName,
+            nowNext = nowNext,
+            nowSeconds = nowSeconds,
+        )
     }
 }
 

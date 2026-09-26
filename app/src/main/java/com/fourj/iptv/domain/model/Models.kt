@@ -42,6 +42,8 @@ data class LiveChannel(
 /** A now/next listing for a channel's guide. */
 data class EpgListing(
     val id: String,
+    /** The channel this belongs to. Needed to attribute a programme to a channel on screen. */
+    val streamId: Int,
     val title: String,
     val start: Long,
     val end: Long,

@@ -9,7 +9,9 @@ import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.RoomDatabase
 import androidx.room.Transaction
+import androidx.room.migration.Migration
 import androidx.room.withTransaction
+import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -108,16 +110,47 @@ interface LiveCategorySyncDao {
         LiveCategoryEntity::class,
         LiveChannelEntity::class,
         LiveCategorySyncEntity::class,
+        EpgListingEntity::class,
     ],
-    version = 1,
+    version = 2,
     exportSchema = true,
 )
 abstract class FourJDatabase : RoomDatabase() {
     abstract fun liveCategoryDao(): LiveCategoryDao
     abstract fun liveChannelDao(): LiveChannelDao
     abstract fun liveCategorySyncDao(): LiveCategorySyncDao
+    abstract fun epgDao(): EpgDao
 }
 
+/**
+ * Add the EPG cache.
+ *
+ * App backup is disabled and the channel cache is disposable, so there is nothing here worth
+ * preserving - but it is still written explicitly rather than relying on
+ * `fallbackToDestructiveMigration`, which is deliberately not enabled. A destructive fallback
+ * would silently wipe a user's favourites and progress on any future schema change, and the only
+ * way to notice that happening is to have already lost the data.
+ */
+val MIGRATION_1_2 = object : Migration(1, 2) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `epg_listings` (
+                `listingId` TEXT NOT NULL,
+                `streamId` INTEGER NOT NULL,
+                `title` TEXT NOT NULL,
+                `startEpochSeconds` INTEGER NOT NULL,
+                `endEpochSeconds` INTEGER NOT NULL,
+                `description` TEXT,
+                `channelId` TEXT,
+                `nowPlaying` INTEGER NOT NULL,
+                PRIMARY KEY(`listingId`)
+            )
+            """.trimIndent(),
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_epg_listings_streamId` ON `epg_listings` (`streamId`)")
+    }
+}
 /**
  * Replace one category's channels and mark it cached, atomically.
  *

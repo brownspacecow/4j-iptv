@@ -108,14 +108,6 @@ class LiveRepository(
 
     fun playlistUrl(): String = StreamUrls.playlist(profile)
 
-    /** Now/next for one channel. Panels return a 200 with an empty list when unsupported. */
-    suspend fun shortEpg(streamId: Int, limit: Int = 4): Result<List<EpgListing>> =
-        withContext(ioDispatcher) {
-            runCatching {
-                api.shortEpg(streamId = streamId, limit = limit).listings.map { it.toModel() }
-            }
-        }
-
     suspend fun clearCache() = withContext(ioDispatcher) {
         channelDao.clear()
         syncDao.clear()
@@ -161,17 +153,3 @@ internal fun LiveChannelEntity.toModel() = LiveChannel(
     hasArchive = hasArchive,
     archiveDurationDays = archiveDurationDays,
 )
-
-internal fun com.fourj.iptv.data.remote.xtream.EpgListingDto.toModel(): EpgListing {
-    val start = startTimestamp ?: 0L
-    val end = stopTimestamp ?: 0L
-    return EpgListing(
-        id = id,
-        title = title,
-        start = start,
-        end = end,
-        description = description?.takeIf { it.isNotBlank() },
-        channelId = channelId,
-        nowPlaying = nowPlaying == 1,
-    )
-}
