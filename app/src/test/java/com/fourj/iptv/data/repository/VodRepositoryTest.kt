@@ -426,6 +426,30 @@ class VodRepositoryTest {
         assertEquals(listOf("Newer", "Older"), repository.observeFavourites().first().map { it.name })
     }
 
+    @Test
+    fun `an episode favourite is found by its key and removes cleanly`() = runTest {
+        // Episodes have no numeric id, so add, remove and lookup all go through the content key. A
+        // remove that missed would leave the row stuck on forever, since a toggle would then only
+        // ever add.
+        val key = episodeContentKey("3001:hash-1")
+        repository.addFavourite(
+            Favourite(
+                contentKey = key,
+                kind = ContentKind.EPISODE,
+                contentId = 0,
+                name = "An Episode",
+                subtitle = "A Show - S1E1",
+                posterUrl = null,
+                addedAtMillis = 1_000,
+            ),
+        )
+        assertNotNull(repository.favouriteFor(key))
+        assertEquals(ContentKind.EPISODE, repository.favouriteFor(key)!!.kind)
+
+        repository.removeFavourite(key)
+        assertEquals(null, repository.favouriteFor(key))
+    }
+
     // -----------------------------------------------------------------------------------------
     // Fixtures
     // -----------------------------------------------------------------------------------------

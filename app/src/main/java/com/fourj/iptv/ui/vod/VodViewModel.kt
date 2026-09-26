@@ -76,6 +76,10 @@ data class LibraryState(
     fun isFavourite(kind: ContentKind, id: Int): Boolean =
         favourites.any { it.kind == kind && it.contentId == id }
 
+    /** By content key, for episodes, which have no numeric id to match on. */
+    fun isFavouriteByKey(contentKey: String): Boolean =
+        favourites.any { it.contentKey == contentKey }
+
     fun progress(kind: ContentKind, id: Int): PlaybackProgress? =
         continueWatching.firstOrNull { it.contentKey == contentKey(kind, id) }
 }
@@ -310,20 +314,49 @@ class VodViewModel(
     }
 
     fun toggleFavourite(kind: ContentKind, id: Int, name: String, subtitle: String?, posterUrl: String?) {
+        toggleFavouriteByKey(contentKey(kind, id), name, subtitle, posterUrl, kind = kind, contentId = id)
+    }
+
+    /**
+     * Toggle by content key.
+     *
+     * Keyed rather than by a numeric id because an episode has none; [contentId] is only carried for
+     * the display and is meaningless for an episode.
+     */
+    fun toggleFavouriteByKey(
+        contentKey: String,
+        name: String,
+        subtitle: String?,
+        posterUrl: String?,
+        kind: ContentKind? = null,
+        contentId: Int = 0,
+    ) {
         viewModelScope.launch {
-            repository.toggleFavourite(
-                Favourite(
-                    contentKey = contentKey(kind, id),
-                    kind = kind,
-                    contentId = id,
-                    name = name,
-                    subtitle = subtitle,
-                    posterUrl = posterUrl,
-                    addedAtMillis = System.currentTimeMillis(),
-                ),
-            )
+            val existing = repository.favouriteFor(contentKey)
+            val derivedKind = kind ?: existing?.kind ?: kindFromKey(contentKey)
+            if (existing != null) {
+                repository.removeFavourite(contentKey)
+            } else {
+                repository.addFavourite(
+                    Favourite(
+                        contentKey = contentKey,
+                        kind = derivedKind,
+                        contentId = contentId,
+                        name = name,
+                        subtitle = subtitle,
+                        posterUrl = posterUrl,
+                        addedAtMillis = System.currentTimeMillis(),
+                    ),
+                )
+            }
         }
     }
+
+    /** Read the kind back out of a key of the form `KIND:id`. */
+    private fun kindFromKey(key: String): ContentKind =
+        key.substringBefore(':').let {
+            runCatching { ContentKind.valueOf(it) }.getOrDefault(ContentKind.MOVIE)
+        }
 
     fun saveProgress(progress: PlaybackProgress) {
         viewModelScope.launch { repository.saveProgress(progress) }

@@ -4,6 +4,11 @@ import android.util.Log
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.focus.focusRequester
+import androidx.tv.material3.Button
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -78,6 +83,8 @@ fun VodPlayerScreen(
     posterUrl: String?,
     resumePositionSeconds: Long,
     requestHeaders: Map<String, String>,
+    isFavourite: Boolean,
+    onToggleFavourite: () -> Unit,
     onProgress: (PlaybackProgress) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
@@ -88,6 +95,25 @@ fun VodPlayerScreen(
     var positionMs by remember { mutableLongStateOf(0L) }
     var durationMs by remember { mutableLongStateOf(0L) }
     var errorText by remember { mutableStateOf<String?>(null) }
+    val controlsFocus = remember { FocusRequester() }
+
+    /**
+     * Set by the key handler, acted on after the overlay has been composed.
+     *
+     * Going through a flag rather than requesting focus inline is what keeps this from crashing:
+     * the favourite button lives inside `if (overlayVisible)`, so on the frame that reveals it the
+     * requester has no attached target and `requestFocus()` throws.
+     */
+    var pendingControlFocus by remember { mutableStateOf(false) }
+
+    /**
+     * Whether a control currently holds focus.
+     *
+     * The key handler is a preview handler on the whole surface, so it sees keys before the focused
+     * control does. It has to know whether there *is* a focused control, or it swallows the press
+     * that would have activated it.
+     */
+    var controlsFocused by remember { mutableStateOf(false) }
 
     val player = remember {
         ExoPlayer.Builder(context, audioRenderersFactory(context))
@@ -214,17 +240,25 @@ fun VodPlayerScreen(
                         true
                     }
 
-                    Key.DirectionUp -> {
-                        player.seekTo(seekClamp(player, SEEK_STEP_MS))
-                        true
-                    }
-
-                    Key.DirectionDown -> {
-                        player.seekTo(seekClamp(player, -SEEK_STEP_MS))
+                    // Up and down move focus onto the overlay's controls rather than nudging the
+                    // position. Left and right already scrub, which is the convention on every
+                    // other player, and a control that cannot be reached is not a control - this is
+                    // the only way to favourite something without a pointer.
+                    //
+                    // The request is deferred, not made here: the button exists only while the
+                    // overlay is showing, so asking for its focus in the same event that reveals it
+                    // crashes on a requester with no target yet.
+                    Key.DirectionDown, Key.DirectionUp -> {
+                        overlayVisible = true
+                        pendingControlFocus = true
                         true
                     }
 
                     Key.MediaPlayPause, Key.Enter, Key.NumPadEnter, Key.DirectionCenter -> {
+                        // Let the focused control have it. Without this the preview handler eats
+                        // every press, so the Favourite button is visible, focusable and inert, and
+                        // OK silently pauses the video instead.
+                        if (controlsFocused) return@onPreviewKeyEvent false
                         if (player.isPlaying) player.pause() else player.play()
                         isPlaying = player.isPlaying
                         true
@@ -256,6 +290,14 @@ fun VodPlayerScreen(
                     .background(Color(0xCC000000))
                     .padding(18.dp),
             ) {
+            // Runs after this composition, so the button below exists and the requester has a
+            // target. Requesting focus any earlier is what crashed.
+            LaunchedEffect(pendingControlFocus) {
+                if (pendingControlFocus) {
+                    controlsFocus.requestFocus()
+                    pendingControlFocus = false
+                }
+            }
                 Text(
                     text = title,
                     style = androidx.tv.material3.MaterialTheme.typography.titleMedium,
@@ -287,9 +329,23 @@ fun VodPlayerScreen(
                         progress = if (durationMs > 0) positionMs.toFloat() / durationMs else 0f,
                         width = 520.dp,
                     )
+                    Spacer(Modifier.height(10.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Box(modifier = Modifier.onFocusChanged { controlsFocused = it.isFocused }) {
+                            Button(
+                                onClick = {
+                                    onToggleFavourite()
+                                    overlayVisible = true
+                                },
+                                modifier = Modifier.focusRequester(controlsFocus),
+                            ) {
+                                Text(if (isFavourite) "★ Favourited" else "☆ Favourite")
+                            }
+                        }
+                    }
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        text = "← → seek    ·    OK pause/resume    ·    Back to exit",
+                        text = "← → seek    ·    OK play/pause    ·    ↑↓ controls    ·    Back to exit",
                         style = androidx.tv.material3.MaterialTheme.typography.labelSmall,
                         color = Color(0xFF8A94A3),
                     )
@@ -314,18 +370,6 @@ private fun SeekBar(progress: Float, width: androidx.compose.ui.unit.Dp, modifie
                 .background(Color(0xFF4DA3FF)),
         )
     }
-}
-
-/**
- * Seek by [deltaMs] without leaving the programme.
- *
- * `ExoPlayer` has no relative seek, and a live/unknown duration has to be treated as unbounded or
- * the position would clamp to a nonsense value.
- */
-private fun seekClamp(player: androidx.media3.exoplayer.ExoPlayer, deltaMs: Long): Long {
-    val duration = player.duration
-    val target = player.currentPosition + deltaMs
-    return if (duration > 0) target.coerceIn(0, duration) else target.coerceAtLeast(0)
 }
 
 /** `H:MM:SS` or `M:SS`, whichever is needed. */

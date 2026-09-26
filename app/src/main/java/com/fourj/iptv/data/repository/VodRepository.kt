@@ -200,6 +200,17 @@ class VodRepository(
             .map { rows -> rows.map { it.toModel() } }
             .flowOn(ioDispatcher)
 
+    suspend fun favouriteFor(contentKey: String): Favourite? =
+        withContext(ioDispatcher) { database.libraryDao().favouriteFor(contentKey)?.toModel() }
+
+    suspend fun addFavourite(favourite: Favourite) = withContext(ioDispatcher) {
+        database.libraryDao().addFavourite(favourite.toEntity())
+    }
+
+    suspend fun removeFavourite(contentKey: String) = withContext(ioDispatcher) {
+        database.libraryDao().removeFavourite(contentKey)
+    }
+
     suspend fun isFavourite(kind: ContentKind, contentId: Int): Boolean =
         withContext(ioDispatcher) {
             database.libraryDao().favouriteFor(contentKey(kind, contentId)) != null

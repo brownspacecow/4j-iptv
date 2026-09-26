@@ -195,6 +195,16 @@ fun AppShell(
                 posterUrl = current.posterUrl,
                 resumePositionSeconds = current.resumeSeconds,
                 requestHeaders = current.headers,
+                isFavourite = library.isFavourite(current.kind, current.id),
+                onToggleFavourite = {
+                    vodViewModel.toggleFavourite(
+                        kind = current.kind,
+                        id = current.id,
+                        name = current.title,
+                        subtitle = null,
+                        posterUrl = current.posterUrl,
+                    )
+                },
                 onProgress = vodViewModel::saveProgress,
                 onBack = {
                     vodPlayback = null
@@ -211,6 +221,15 @@ fun AppShell(
                 posterUrl = current.posterUrl,
                 resumePositionSeconds = current.resumeSeconds,
                 requestHeaders = emptyMap(),
+                isFavourite = library.isFavouriteByKey(current.progressKey),
+                onToggleFavourite = {
+                    vodViewModel.toggleFavouriteByKey(
+                        contentKey = current.progressKey,
+                        name = current.title,
+                        subtitle = current.subtitle,
+                        posterUrl = current.posterUrl,
+                    )
+                },
                 onProgress = vodViewModel::saveProgress,
                 onBack = {
                     vodPlayback = null
