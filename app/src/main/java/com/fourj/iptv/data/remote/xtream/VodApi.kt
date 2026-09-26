@@ -1,6 +1,7 @@
 package com.fourj.iptv.data.remote.xtream
 
 import kotlinx.serialization.json.JsonObject
+import okhttp3.ResponseBody
 import retrofit2.http.GET
 import retrofit2.http.Query
 
@@ -50,6 +51,29 @@ interface VodApi {
         @Query("limit") limit: Int? = null,
         @Query("start") start: Int? = null,
     ): List<SeriesDto>
+
+    /**
+     * The two catalogue reads, as raw bodies.
+     *
+     * Same reason as [XtreamApi.liveStreamsRaw]: a large shelf is truncated by this provider, and
+     * the JSON converter turns that into a failure that throws away every film or series that did
+     * arrive. Reading the body lets the truncated array be closed at its last complete title.
+     */
+    @GET("player_api.php")
+    suspend fun vodStreamsRaw(
+        @Query("action") action: String = "get_vod_streams",
+        @Query("category_id") categoryId: String? = null,
+        @Query("limit") limit: Int? = null,
+        @Query("start") start: Int? = null,
+    ): ResponseBody
+
+    @GET("player_api.php")
+    suspend fun seriesRaw(
+        @Query("action") action: String = "get_series",
+        @Query("category_id") categoryId: String? = null,
+        @Query("limit") limit: Int? = null,
+        @Query("start") start: Int? = null,
+    ): ResponseBody
 
     /**
      * `action=get_series_info`, returned as raw JSON rather than a typed model.

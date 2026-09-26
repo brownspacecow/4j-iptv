@@ -13,11 +13,12 @@ import com.fourj.iptv.data.remote.retrying
 import com.fourj.iptv.data.remote.runCatchingCancellable
 import com.fourj.iptv.data.remote.StreamUrls
 import com.fourj.iptv.data.remote.XtreamNetwork
+import com.fourj.iptv.data.remote.readCatalogueLeniently
 import com.fourj.iptv.data.remote.xtream.SeriesDto
 import com.fourj.iptv.data.remote.xtream.SeriesInfoResponse
 import com.fourj.iptv.data.remote.xtream.VodApi
-import com.fourj.iptv.data.remote.xtream.VodCategoryDto
 import com.fourj.iptv.data.remote.xtream.VodStreamDto
+import com.fourj.iptv.data.remote.xtream.VodCategoryDto
 import com.fourj.iptv.domain.model.ContentKind
 import com.fourj.iptv.domain.model.Episode
 import com.fourj.iptv.domain.model.Favourite
@@ -34,9 +35,13 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.KSerializer
+import kotlinx.serialization.builtins.ListSerializer
+import okhttp3.ResponseBody
 import kotlinx.serialization.json.decodeFromJsonElement
 
 /**
+ * On-demand catalogue and library.
  * On-demand catalogue and library.
  *
  * Cached the same way live TV is: categories always, contents per category on demand, because a
@@ -113,12 +118,20 @@ class VodRepository(
 
                 if (kind == ContentKind.MOVIE) {
                     val rows = retrying(label = "get_vod_streams[$categoryId]") {
-                        api.vodStreams(categoryId = categoryId)
+                        readCatalogue(
+                            label = "get_vod_streams[$categoryId]",
+                            fetch = { api.vodStreamsRaw(categoryId = categoryId) },
+                            strategy = ListSerializer(VodStreamDto.serializer()),
+                        )
                     }.getOrThrow().mapIndexedNotNull { index, dto -> dto.toEntity(index) }
                     database.replaceMoviesInCategory(categoryId, rows)
                 } else {
                     val rows = retrying(label = "get_series[$categoryId]") {
-                        api.series(categoryId = categoryId)
+                        readCatalogue(
+                            label = "get_series[$categoryId]",
+                            fetch = { api.seriesRaw(categoryId = categoryId) },
+                            strategy = ListSerializer(SeriesDto.serializer()),
+                        )
                     }.getOrThrow().mapIndexedNotNull { index, dto -> dto.toEntity(index) }
                     database.replaceSeriesInCategory(categoryId, rows)
                 }
@@ -131,6 +144,31 @@ class VodRepository(
                 )
             }
         }
+
+    /**
+     * Read a catalogue response, keeping the part of it that arrived.
+     *
+     * A large shelf is truncated by this provider, and a truncated response used to fail the whole
+     * call - so a shelf whose last film never arrived lost every film before it too, and the browse
+     * screen showed nothing. Closing the array at its last complete title turns that into a shelf
+     * that is very nearly full.
+     */
+    private suspend fun <T> readCatalogue(
+        label: String,
+        fetch: suspend () -> ResponseBody,
+        strategy: KSerializer<List<T>>,
+    ): List<T> = withContext(ioDispatcher) {
+        fetch().use { response ->
+            val body = response.string()
+            readCatalogueLeniently(
+                body = body,
+                expectedBytes = response.contentLength(),
+                strategy = strategy,
+                json = XtreamNetwork.json,
+                label = label,
+            ).getOrThrow()
+        }
+    }
 
     /** When this shelf was last fetched, or null if it never has been. */
     suspend fun categorySyncedAt(categoryId: String, kind: ContentKind): Long? =

@@ -9,6 +9,7 @@ import com.fourj.iptv.data.local.LiveChannelEntity
 import com.fourj.iptv.data.local.replaceCategoryChannels
 import com.fourj.iptv.data.remote.StreamUrls
 import com.fourj.iptv.data.remote.XtreamNetwork
+import com.fourj.iptv.data.remote.readCatalogueLeniently
 import com.fourj.iptv.data.remote.runCatchingCancellable
 import com.fourj.iptv.data.remote.retrying
 import com.fourj.iptv.data.remote.xtream.LiveCategoryDto
@@ -22,6 +23,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.builtins.ListSerializer
 
 /**
  * Live TV data for one provider.
@@ -104,7 +106,16 @@ class LiveRepository(
                 if (!force && syncDao.isSynced(categoryId)) return@runCatchingCancellable
 
                 val entities = retrying(label = "get_live_streams[$categoryId]") {
-                    api.liveStreams(categoryId = categoryId)
+                    api.liveStreamsRaw(categoryId = categoryId).use { response ->
+                        val body = response.string()
+                        readCatalogueLeniently(
+                            body = body,
+                            expectedBytes = response.contentLength(),
+                            strategy = ListSerializer(LiveStreamDto.serializer()),
+                            json = XtreamNetwork.json,
+                            label = "get_live_streams[$categoryId]",
+                        ).getOrThrow()
+                    }
                 }.getOrThrow().mapIndexedNotNull { index, dto -> dto.toEntity(index) }
 
                 database.replaceCategoryChannels(categoryId, entities, System.currentTimeMillis())

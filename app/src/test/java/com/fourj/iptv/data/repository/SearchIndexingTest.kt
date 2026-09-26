@@ -184,6 +184,48 @@ class SearchIndexingTest {
         )
     }
 
+    @Test
+    fun `a truncated shelf is partly indexed rather than skipped`() = runBlocking {
+        // The panel cuts a large response off partway through the array. Before, that failed the
+        // whole call and the shelf was skipped - losing every film that had arrived intact, which
+        // is most of a 20 MB shelf. It should now be a partial success.
+        val truncated = """
+            [{"stream_id":1,"name":"SpongeBob SquarePants","category_id":"10"},
+             {"stream_id":2,"name":"SpongeBob Slightly Squidward","category_id":"10"},
+             {"stream_id":3,"name":"The Incredi
+        """.trimIndent()
+        enqueue(truncated)
+
+        val run = repository.indexEverything(
+            liveCategories = emptyList(),
+            vodShelves = listOf(VodShelf(ContentKind.MOVIE, VodCategory("570", "Movies-Kids"))),
+        )
+
+        // Two complete titles salvaged out of three; the third never finished arriving.
+        assertEquals(2, run.added)
+        assertTrue(
+            "a truncated shelf must not count as skipped: ${run.skippedScopes}",
+            run.skippedScopes.isEmpty(),
+        )
+        assertEquals(2, database.searchIndexDao().search("spongebob", 10).size)
+    }
+
+    @Test
+    fun `a shelf truncated before any title arrived is still skipped`() = runBlocking {
+        // The opposite case, and the reason the salvage is not unconditional. Nothing completed, so
+        // there is nothing to keep - and reporting that as an indexed shelf would leave it looking
+        // like a provider with no films in it.
+        enqueue("""[{"stream_id":1,"na""")
+
+        val run = repository.indexEverything(
+            liveCategories = emptyList(),
+            vodShelves = listOf(VodShelf(ContentKind.MOVIE, VodCategory("570", "Movies-Kids"))),
+        )
+
+        assertEquals(0, run.added)
+        assertEquals(listOf("MOVIE:570"), run.skippedScopes)
+    }
+
     /**
      * A response cut off mid-array, which is what this provider does to a large payload.
      *

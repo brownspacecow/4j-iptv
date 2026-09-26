@@ -116,6 +116,9 @@ sealed interface Resumable {
     data class EpisodeItem(val episode: Episode, val url: String, val resumeSeconds: Long) : Resumable
 }
 
+// `flatMapLatest` is still marked experimental, so the catalogue load opts in rather than leaving
+// the warning to be rediscovered on every build.
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class VodViewModel(
     private val repository: VodRepository,
     private val searchRepository: SearchRepository,

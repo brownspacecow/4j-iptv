@@ -51,6 +51,7 @@ import com.fourj.iptv.ui.live.LiveScreen
 import com.fourj.iptv.ui.live.LiveViewModel
 import com.fourj.iptv.ui.search.SearchScreen
 import com.fourj.iptv.ui.search.SearchViewModel
+import com.fourj.iptv.ui.search.SyncScreen
 import com.fourj.iptv.ui.theme.LocalUiScale
 import com.fourj.iptv.ui.vod.formatDuration
 import com.fourj.iptv.ui.vod.DetailTarget
@@ -112,6 +113,15 @@ fun AppShell(
      * "where am I" and leaves search as "find me something", which is a different job.
      */
     var searchOpen by remember { mutableStateOf(false) }
+
+    /**
+     * Sync is a screen of its own rather than a control buried in search.
+     *
+     * It is a long, deliberate download, and people want to watch it and be able to stop it - a
+     * footnote inside a search box gives neither. Search stays the question you ask; syncing stays
+     * the thing you start.
+     */
+    var syncOpen by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val tabFocus = remember { FocusRequester() }
     val activity = LocalContext.current as? Activity
@@ -179,8 +189,9 @@ fun AppShell(
      * and the first press would appear to do nothing. Search is a layer over the tabs, so back
      * peels off the layer.
      */
-    BackHandler(enabled = searchOpen) {
+    BackHandler(enabled = searchOpen || syncOpen) {
         searchOpen = false
+        syncOpen = false
         searchViewModel.clearQuery()
     }
 
@@ -218,7 +229,7 @@ fun AppShell(
         }
     }
 
-    if (searchOpen) {
+    if (searchOpen || syncOpen) {
         Surface(
             modifier = Modifier.fillMaxSize(),
             colors = SurfaceDefaults.colors(containerColor = MaterialTheme.colorScheme.background),
@@ -229,11 +240,21 @@ fun AppShell(
                     focusRequester = tabFocus,
                     onSelect = {
                         searchOpen = false
+                        syncOpen = false
                         destination = it
                     },
                     onSignOut = onSignOut,
-                    onSearch = { /* already open */ },
+                    onSearch = { searchOpen = true; syncOpen = false },
+                    onSync = { syncOpen = true; searchOpen = false },
                 )
+                if (syncOpen) {
+                    SyncScreen(
+                        state = searchState,
+                        onStart = searchViewModel::startIndexing,
+                        onStop = searchViewModel::cancelIndexing,
+                        onBack = { syncOpen = false },
+                    )
+                } else {
                 SearchScreen(
                     state = searchState,
                     onQueryChange = searchViewModel::onQueryChange,
@@ -294,6 +315,7 @@ fun AppShell(
                         }
                     },
                 )
+                }
             }
         }
         return
@@ -366,6 +388,7 @@ fun AppShell(
                 onSelect = { destination = it },
                 onSignOut = onSignOut,
                 onSearch = { searchOpen = true },
+                onSync = { syncOpen = true },
             )
 
             // Focus tracking is scoped to the content area, not the whole column: the column also
@@ -472,6 +495,7 @@ private fun TopBar(
     onSelect: (TopLevel) -> Unit,
     onSignOut: () -> Unit,
     onSearch: () -> Unit,
+    onSync: () -> Unit,
 ) {
     val uiScale = LocalUiScale.current
     Row(
@@ -509,6 +533,8 @@ private fun TopBar(
         // you can only hit with a pointer is not a control on a television. It also belongs with
         // the rest of the app's navigation, and it has to work from every tab, not just Live TV.
         Button(onClick = onSearch) { Text("Search") }
+        Spacer(Modifier.width(10.dp))
+        Button(onClick = onSync) { Text("Sync") }
         Spacer(Modifier.width(10.dp))
         Button(onClick = onSignOut) { Text("Sign out") }
     }

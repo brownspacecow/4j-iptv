@@ -4,7 +4,10 @@ import android.util.Log
 import com.fourj.iptv.data.local.IndexProgressEntity
 import com.fourj.iptv.data.local.SearchIndexDatabase
 import com.fourj.iptv.data.local.SearchIndexEntity
+import com.fourj.iptv.data.remote.XtreamNetwork
+import com.fourj.iptv.data.remote.readCatalogueLeniently
 import com.fourj.iptv.data.remote.retrying
+import com.fourj.iptv.data.remote.xtream.LiveStreamDto
 import com.fourj.iptv.data.remote.xtream.SeriesDto
 import com.fourj.iptv.data.remote.xtream.VodApi
 import com.fourj.iptv.data.remote.xtream.VodStreamDto
@@ -22,6 +25,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.KSerializer
+import kotlinx.serialization.builtins.ListSerializer
+import okhttp3.ResponseBody
 
 /** One hit, resolved far enough to be acted on. */
 data class SearchHit(
@@ -45,6 +51,18 @@ data class IndexRun(
      * and the viewer would have no way to tell that from "your provider does not carry it".
      */
     val skippedScopes: List<String>,
+)
+
+/** Progress of a run in flight, so the sync screen can show where it has got to. */
+data class SyncReport(
+    val added: Int,
+    val liveDone: Int,
+    val liveTotal: Int,
+    val movieDone: Int,
+    val movieTotal: Int,
+    val seriesDone: Int,
+    val seriesTotal: Int,
+    val skipped: Int,
 )
 
 /** Raw index counters, as the database knows them. */
@@ -243,10 +261,26 @@ class SearchRepository(
     suspend fun indexEverything(
         liveCategories: List<LiveCategory>,
         vodShelves: List<VodShelf>,
-        onProgress: suspend (added: Int) -> Unit = {},
+        onProgress: suspend (SyncReport) -> Unit = {},
     ): IndexRun = withContext(ioDispatcher) {
         var added = 0
         val skipped = mutableListOf<String>()
+        var liveDone = 0
+        var movieDone = 0
+        var seriesDone = 0
+        val seriesTotal = vodShelves.count { it.kind == ContentKind.SERIES }
+        val movieTotal = vodShelves.size - seriesTotal
+
+        fun report() = SyncReport(
+            added = added,
+            liveDone = liveDone,
+            liveTotal = liveCategories.size,
+            movieDone = movieDone,
+            movieTotal = movieTotal,
+            seriesDone = seriesDone,
+            seriesTotal = seriesTotal,
+            skipped = skipped.size,
+        )
 
         fun noteFailure(scope: String, throwable: Throwable) {
             Log.w(TAG, "index $scope failed, skipping it", throwable)
@@ -258,7 +292,8 @@ class SearchRepository(
             added += runCatching { indexLiveCategory(category) }
                 .onFailure { noteFailure(scope, it) }
                 .getOrDefault(0)
-            onProgress(added)
+            liveDone++
+            onProgress(report())
         }
 
         for (shelf in vodShelves) {
@@ -269,7 +304,8 @@ class SearchRepository(
                     else -> indexMovieCategory(shelf.category)
                 }
             }.onFailure { noteFailure(scope, it) }.getOrDefault(0)
-            onProgress(added)
+            if (shelf.kind == ContentKind.SERIES) seriesDone++ else movieDone++
+            onProgress(report())
         }
 
         Log.i(TAG, "search index finished: $added added, ${skipped.size} shelf(s) skipped")
@@ -287,7 +323,11 @@ class SearchRepository(
         if (dao.progressFor(scope)?.complete == true) return 0
 
         val channels = retrying(label = "index live[${category.id}]") {
-            liveApi.liveStreams(categoryId = category.id)
+            readCatalogue(
+                label = "index live[${category.id}]",
+                fetch = { liveApi.liveStreamsRaw(categoryId = category.id) },
+                strategy = ListSerializer(LiveStreamDto.serializer()),
+            )
         }.getOrThrow()
 
         val rows = channels.mapNotNull { dto ->
@@ -406,10 +446,38 @@ class SearchRepository(
         return firstIdOfFirstPage != firstIdOfThisPage
     }
 
+    /**
+     * Read a catalogue response, keeping the part of it that arrived.
+     *
+     * This is what turns the panel's habit of cutting a large response off mid-array from a failure
+     * into a partial success. Before, a shelf whose last film never arrived was discarded whole -
+     * every film before it included - and 99 of 269 shelves ended up unreadable for that reason.
+     */
+    private suspend fun <T> readCatalogue(
+        label: String,
+        fetch: suspend () -> ResponseBody,
+        strategy: KSerializer<List<T>>,
+    ): List<T> = withContext(Dispatchers.IO) {
+        fetch().use { response ->
+            val body = response.string()
+            readCatalogueLeniently(
+                body = body,
+                expectedBytes = response.contentLength(),
+                strategy = strategy,
+                json = XtreamNetwork.json,
+                label = label,
+            ).getOrThrow()
+        }
+    }
+
     private suspend fun indexSeriesCategory(category: VodCategory): Int =
         indexShelf(category, ContentKind.SERIES) { offset ->
             val page = retrying(label = "index series[${category.id}]@$offset") {
-                vodApi.series(categoryId = category.id, limit = pageSize, start = offset)
+                readCatalogue(
+                    label = "index series[${category.id}]",
+                    fetch = { vodApi.seriesRaw(categoryId = category.id, limit = pageSize, start = offset) },
+                    strategy = ListSerializer(SeriesDto.serializer()),
+                )
             }.getOrThrow()
             Page(page.size, page.mapNotNull { it.toSearchRow(category, ContentKind.SERIES) })
         }
@@ -417,7 +485,11 @@ class SearchRepository(
     private suspend fun indexMovieCategory(category: VodCategory): Int =
         indexShelf(category, ContentKind.MOVIE) { offset ->
             val page = retrying(label = "index movies[${category.id}]@$offset") {
-                vodApi.vodStreams(categoryId = category.id, limit = pageSize, start = offset)
+                readCatalogue(
+                    label = "index movies[${category.id}]",
+                    fetch = { vodApi.vodStreamsRaw(categoryId = category.id, limit = pageSize, start = offset) },
+                    strategy = ListSerializer(VodStreamDto.serializer()),
+                )
             }.getOrThrow()
             Page(page.size, page.mapNotNull { it.toSearchRow(category, ContentKind.MOVIE) })
         }

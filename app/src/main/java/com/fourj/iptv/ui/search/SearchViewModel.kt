@@ -30,6 +30,10 @@ data class SearchUiState(
     val isIndexing: Boolean = false,
     val indexedSoFar: Int = 0,
     val indexError: String? = null,
+    /** Shelves that could not be read at all, from the run in progress or the last one. */
+    val skippedShelves: Int = 0,
+    /** Per-kind detail, for the sync screen. */
+    val syncProgress: SyncProgress = SyncProgress(),
 ) {
     val live: List<SearchHit> get() = hits.filter { it.kind == ContentKind.LIVE_CHANNEL }
     val movies: List<SearchHit> get() = hits.filter { it.kind == ContentKind.MOVIE }
@@ -47,6 +51,29 @@ data class SearchUiState(
      */
     val missingBecauseIncomplete: Boolean
         get() = isEmptyResult && coverage?.isComplete == false
+}
+
+/**
+ * How far a sync has got, per kind.
+ *
+ * Split by kind because they finish at very different rates: live channels are a dozen requests and
+ * quick, while films and series are the long part. One combined number would hide which half is
+ * still outstanding.
+ */
+data class SyncProgress(
+    val liveDone: Int = 0,
+    val liveTotal: Int = 0,
+    val movieDone: Int = 0,
+    val movieTotal: Int = 0,
+    val seriesDone: Int = 0,
+    val seriesTotal: Int = 0,
+) {
+    val shelvesDone: Int get() = liveDone + movieDone + seriesDone
+    val shelvesTotal: Int get() = liveTotal + movieTotal + seriesTotal
+
+    /** 0f..1f, or null before any shelf is known - an empty total must not read as "finished". */
+    val fraction: Float?
+        get() = if (shelvesTotal == 0) null else shelvesDone.toFloat() / shelvesTotal
 }
 
 /**
@@ -140,8 +167,21 @@ class SearchViewModel(
                 val live = runCatching { liveCategories() }.getOrDefault(emptyList())
                 val vod = runCatching { vodShelves() }.getOrDefault(emptyList())
                 scopesTotal = live.size + vod.size
-                val run = repository.indexEverything(live, vod) { done ->
-                    _state.update { it.copy(indexedSoFar = done) }
+                val run = repository.indexEverything(live, vod) { report ->
+                    _state.update {
+                        it.copy(
+                            indexedSoFar = report.added,
+                            skippedShelves = report.skipped,
+                            syncProgress = SyncProgress(
+                                liveDone = report.liveDone,
+                                liveTotal = report.liveTotal,
+                                movieDone = report.movieDone,
+                                movieTotal = report.movieTotal,
+                                seriesDone = report.seriesDone,
+                                seriesTotal = report.seriesTotal,
+                            ),
+                        )
+                    }
                 }
                 refreshCoverage()
                 _state.update {
@@ -158,6 +198,7 @@ class SearchViewModel(
                                 "${if (count == 1) "is" else "are"} missing from search. " +
                                 "This usually clears if you try again."
                         },
+                        skippedShelves = run.skippedScopes.size,
                     )
                 }
             } catch (cancellation: CancellationException) {

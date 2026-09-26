@@ -12,7 +12,7 @@ Live TV with a programme guide, plus films and series with resume, and search ac
 |---|---|
 | Features | Live TV, EPG, films, series, search, continue watching, favourites |
 | Builds | `assembleFullDebug`, `assembleLiteDebug` |
-| Tests | 152 unit tests, all passing |
+| Tests | 168 unit tests, all passing |
 | Verified on hardware | **No** — see [Honest limitations](#honest-limitations) |
 
 ## What works
@@ -42,6 +42,8 @@ Live TV with a programme guide, plus films and series with resume, and search ac
 - **One search box for live TV, films and series**, reachable from every tab, with results grouped by
   type. Typing filters as you go — debounced, so a burst of keypresses gives one settled answer
   rather than a list thrashing under you.
+- **A sync you start yourself**, on its own screen, with progress per kind and a stop button. It picks
+  up where it left off, and it can be left running while you watch something.
 - **Ranking by how well the title matches.** A title starting with what you typed comes first, then
   one containing the word, then the rest.
 - **Instant and offline.** Search is a local query, so it never waits on a provider and works with
@@ -88,7 +90,7 @@ sdk.dir=/path/to/Android/sdk
 Then:
 
 ```bash
-./gradlew :app:testFullDebugUnitTest     # 152 unit tests
+./gradlew :app:testFullDebugUnitTest     # 168 unit tests
 ./gradlew :app:assembleFullDebug         # APK with software audio + video fallback (~43 MB debug)
 ./gradlew :app:assembleLiteDebug         # smaller APK, no software decoders
 ```
@@ -167,13 +169,21 @@ Three things feed the index, in increasing order of effort:
 constantly, and testing found it the hard way: the first version let one oversized shelf end the
 whole run, having indexed 2,084 channels out of several hundred shelves, after which no amount of
 pressing the button again would ever finish it. A shelf that fails is now stepped over, left
-unrecorded so a later run can retry it, and **counted in the summary** — a run on the test provider
-finished with 9,019 titles added and 99 shelves unreadable, and saying so is the difference between a
-tool you can trust and one that quietly lies about what it knows.
+unrecorded so a later run can retry it, and **counted in the summary**.
 
-That last number is the honest limit of this feature: on a provider that truncates as readily as
-this one, roughly a third of the catalogue cannot be indexed at all. It is a property of the panel,
-not something the app can code around.
+**A truncated shelf is partly read, not thrown away.** This is the fix that makes a sync worth
+running. A cut-off response used to fail the whole call, so a shelf whose *last* film never arrived
+lost every film before it too — and with a 20 MB shelf cut at 2.2 MB, that is most of it. The
+response is now closed at its last complete title and parsed, so the titles that did arrive are kept
+and searchable. What is lost is only the tail, and the shortfall is reported using the panel's own
+`Content-Length` rather than guessed at.
+
+A shelf cut off *before any title completed* is still skipped: there is nothing to keep, and reporting
+that as an indexed shelf would leave it looking like a provider with no films in it.
+
+That last measure is the honest limit of the feature. On a panel that truncates as readily as this
+one, some titles cannot be indexed at all, and the sync screen says how many shelves are affected
+rather than reporting a tidy percentage.
 
 ---
 
