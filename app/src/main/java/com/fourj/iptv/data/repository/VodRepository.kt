@@ -265,7 +265,15 @@ class VodRepository(
         movie.directSource?.takeIf { it.startsWith("http") }
             ?: StreamUrls.movie(profile, movie)
 
-    fun episodeStreamUrl(episode: Episode): String? = episode.sourceUrl
+    /**
+     * The playable URL for an episode.
+     *
+     * Prefers what the panel supplied, and otherwise builds the conventional `/series/` path from
+     * the episode's own id. That fallback is not a nicety: a real provider returns every episode
+     * with an empty `direct_source` and serves them perfectly well, so reading that field alone
+     * reported an entire working library as unplayable.
+     */
+    fun episodeStreamUrl(episode: Episode): String? = StreamUrls.seriesStream(profile, episode)
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -354,6 +362,7 @@ internal fun com.fourj.iptv.data.remote.xtream.EpisodeDto.toEntity(
             ?: directSource?.trim()?.takeIf { it.isNotEmpty() },
         mimeType = streams?.direct?.mimeType,
         durationSeconds = null,
+        streamId = id.trim().takeIf { it.isNotEmpty() },
     )
 }
 
@@ -395,6 +404,7 @@ internal fun EpisodeEntity.toModel() = Episode(
     sourceUrl = sourceUrl,
     mimeType = mimeType,
     durationSeconds = durationSeconds,
+    streamId = streamId,
 )
 
 internal fun PlaybackProgress.toEntity() = com.fourj.iptv.data.local.PlaybackProgressEntity(

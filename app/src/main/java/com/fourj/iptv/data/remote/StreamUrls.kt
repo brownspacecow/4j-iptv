@@ -1,5 +1,6 @@
 package com.fourj.iptv.data.remote
 
+import com.fourj.iptv.domain.model.Episode
 import com.fourj.iptv.domain.model.LiveChannel
 import com.fourj.iptv.domain.model.Movie
 import com.fourj.iptv.domain.model.ProviderProfile
@@ -83,6 +84,44 @@ object StreamUrls {
         append('.')
         append(movie.containerExtension?.takeIf { it.isNotBlank() } ?: DEFAULT_MOVIE_EXTENSION)
     }
+
+    /**
+     * The playable URL for a series episode.
+     *
+     * Same convention as live and film: a panel serves an episode at
+     * `{base}/series/{username}/{password}/{episode_id}.{ext}`. This one matters more than the
+     * other two, because panels commonly leave `direct_source` empty on episodes while still
+     * serving them - confirmed on a real provider, where every episode came back with
+     * `direct_source: ""` and played fine in another client. Trusting that field alone is what
+     * made a working library look unplayable.
+     *
+     * `direct_source` still wins when it is a real URL, since a panel that fills it in has already
+     * decided how the stream should be reached.
+     */
+    fun seriesStream(profile: ProviderProfile, episode: Episode): String? {
+        directSource(episode.sourceUrl)?.let { return it }
+
+        val streamId = episode.streamId?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        val extension = episode.containerExtension
+            ?.trim()
+            ?.lowercase()
+            ?.removePrefix(".")
+            ?.takeIf { it.isNotEmpty() }
+            ?: DEFAULT_EPISODE_EXTENSION
+
+        return buildString {
+            append(profile.baseUrl)
+            append("/series/")
+            append(profile.username)
+            append('/')
+            append(profile.password)
+            append('/')
+            append(streamId)
+            append('.')
+            append(extension)
+        }
+    }
 }
 
 private const val DEFAULT_MOVIE_EXTENSION = "mp4"
+private const val DEFAULT_EPISODE_EXTENSION = "mkv"

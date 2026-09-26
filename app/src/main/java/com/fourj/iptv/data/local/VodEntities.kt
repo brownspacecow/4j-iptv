@@ -75,6 +75,13 @@ data class EpisodeEntity(
     val sourceUrl: String?,
     val mimeType: String?,
     val durationSeconds: Long?,
+    /**
+     * The panel's own episode id, kept because the stream URL is built from it.
+     *
+     * Separate from [episodeRowKey], which is namespaced by series and so cannot address the
+     * panel's `/series/{user}/{pass}/{id}.{ext}` path.
+     */
+    val streamId: String? = null,
 )
 
 /** One row per watched thing, whatever its kind. Drives "continue watching" and history. */

@@ -123,7 +123,11 @@ fun VodPlayerScreen(
                 DefaultMediaSourceFactory(
                     DefaultHttpDataSource.Factory()
                         .setDefaultRequestProperties(requestHeaders)
-                        .setUserAgent(requestHeaders["User-Agent"] ?: DEFAULT_USER_AGENT),
+                        .setUserAgent(requestHeaders["User-Agent"] ?: DEFAULT_USER_AGENT)
+                        // Panels serve on-demand media from a CDN and answer 302, which Media3
+                        // blocks by default. Same reasoning, and the same evidence, as the live
+                        // player - see the note there.
+                        .setAllowCrossProtocolRedirects(true),
                 ),
             )
             .build()
@@ -143,6 +147,9 @@ fun VodPlayerScreen(
                 )
                 playWhenReady = true
                 prepare()
+                // Logged because a wrong URL here is indistinguishable from a broken provider:
+                // both surfaces as a source error, and only the address says which.
+                Log.i(TAG, "vod playback: $streamUrl")
             }
     }
 

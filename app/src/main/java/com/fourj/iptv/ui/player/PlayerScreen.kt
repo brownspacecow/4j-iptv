@@ -119,9 +119,19 @@ fun PlayerScreen(
                 DefaultMediaSourceFactory(
                     // Panel-issued headers matter: without the User-Agent/Referer a channel
                     // expects, a fair number of streams simply answer 403.
+                    //
+                    // Cross-protocol redirects are followed deliberately. Media3 blocks them by
+                    // default, which is the right default in general - a redirect that changes
+                    // scheme should not silently forward credentials to a new origin - but panels
+                    // routinely serve media from an https CDN and answer 302, and refusing that
+                    // makes the content unplayable. Verified against a real provider, where every
+                    // series episode resolved to a 302 and refused to start. The headers are the
+                    // viewer's own provider credentials going to that provider's own CDN, which is
+                    // the same destination the panel was already pointing at.
                     DefaultHttpDataSource.Factory()
                         .setDefaultRequestProperties(requestHeaders)
-                        .setUserAgent(requestHeaders["User-Agent"] ?: DEFAULT_USER_AGENT),
+                        .setUserAgent(requestHeaders["User-Agent"] ?: DEFAULT_USER_AGENT)
+                        .setAllowCrossProtocolRedirects(true),
                 ),
             )
             .build()

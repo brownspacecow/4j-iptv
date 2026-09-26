@@ -1,4 +1,4 @@
-﻿package com.fourj.iptv.ui.vod
+package com.fourj.iptv.ui.vod
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -189,7 +189,7 @@ fun SeriesDetailScreen(
                                     style = MaterialTheme.typography.titleMedium,
                                     // Muted when there is no stream behind it, so an unplayable
                                     // episode is visible before it is pressed rather than after.
-                                    color = if (episode.sourceUrl.isNullOrBlank()) {
+                                    color = if (!episode.isPlayable) {
                                         MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
                                     } else {
                                         MaterialTheme.colorScheme.onSurface
@@ -197,7 +197,7 @@ fun SeriesDetailScreen(
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                 )
-                                if (episode.sourceUrl.isNullOrBlank()) {
+                                if (!episode.isPlayable) {
                                     Spacer(Modifier.weight(1f))
                                     Text(
                                         text = "no stream",

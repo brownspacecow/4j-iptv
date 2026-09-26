@@ -56,7 +56,25 @@ data class Episode(
     val mimeType: String?,
     /** Seconds. Xtream reports this per episode in `episode_run_time`, often as "00:42:00". */
     val durationSeconds: Long?,
-)
+    /**
+     * The panel's own identifier for this episode, used to build the stream URL.
+     *
+     * Distinct from [id], which is this app's row key. Kept separately because a panel that
+     * leaves `direct_source` empty still serves the episode from `/series/{user}/{pass}/{id}.{ext}`
+     * - and the row key is namespaced by series, so it cannot be used to build that path.
+     */
+    val streamId: String? = null,
+) {
+    /**
+     * Whether a stream URL can be built for this episode.
+     *
+     * Mirrors the rule in the URL builder: either the panel supplied a URL, or there is enough to
+     * construct the conventional `/series/` path. Kept here so the list can grey out an unplayable
+     * episode before it is pressed, rather than only explaining afterwards.
+     */
+    val isPlayable: Boolean
+        get() = !sourceUrl.isNullOrBlank() || !streamId.isNullOrBlank()
+}
 
 /**
  * Where a viewer left off.

@@ -136,9 +136,120 @@ class VodMigrationTest {
      */
     private fun openMigrated(): VodDatabase =
         Room.databaseBuilder(context, VodDatabase::class.java, fileName)
-            .addMigrations(VOD_MIGRATION_1_2)
+            .addMigrations(VOD_MIGRATION_1_2, VOD_MIGRATION_2_3)
             .allowMainThreadQueries()
             .build()
+
+    /**
+     * The v2 file: the shape that actually shipped, episodes included.
+     *
+     * Written out by hand rather than produced by Room, because the interesting case is migrating
+     * a file the app really created, not one Room would build itself.
+     */
+    private fun createVersion2Database(): SupportSQLiteDatabase {
+        val callback = object : SupportSQLiteOpenHelper.Callback(2) {
+            override fun onCreate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `vod_categories` (
+                        `categoryId` TEXT NOT NULL, `kind` TEXT NOT NULL,
+                        `categoryName` TEXT NOT NULL, `sortOrder` INTEGER NOT NULL,
+                        PRIMARY KEY(`categoryId`, `kind`))
+                    """.trimIndent(),
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_vod_categories_kind` ON `vod_categories` (`kind`)")
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `episodes` (
+                        `episodeRowKey` TEXT NOT NULL, `seriesId` INTEGER NOT NULL,
+                        `seasonNumber` INTEGER NOT NULL, `episodeNumber` INTEGER NOT NULL,
+                        `title` TEXT NOT NULL, `containerExtension` TEXT, `sourceUrl` TEXT,
+                        `mimeType` TEXT, `durationSeconds` INTEGER,
+                        PRIMARY KEY(`episodeRowKey`))
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_episodes_seriesId_seasonNumber` " +
+                        "ON `episodes` (`seriesId`, `seasonNumber`)",
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `movies` (
+                        `movieId` INTEGER NOT NULL, `name` TEXT NOT NULL, `categoryId` TEXT,
+                        `posterUrl` TEXT, `backdropUrl` TEXT, `containerExtension` TEXT,
+                        `directSource` TEXT, `httpUserAgent` TEXT, `httpReferrer` TEXT,
+                        `rating` REAL, `plot` TEXT, `durationSeconds` INTEGER,
+                        `sortOrder` INTEGER NOT NULL, PRIMARY KEY(`movieId`))
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `series` (
+                        `seriesId` INTEGER NOT NULL, `name` TEXT NOT NULL, `categoryId` TEXT,
+                        `posterUrl` TEXT, `plot` TEXT, `cast` TEXT, `director` TEXT, `genre` TEXT,
+                        `releaseDate` TEXT, `rating` REAL, `sortOrder` INTEGER NOT NULL,
+                        PRIMARY KEY(`seriesId`))
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `favourites` (
+                        `contentKey` TEXT NOT NULL, `kind` TEXT NOT NULL,
+                        `contentId` INTEGER NOT NULL, `name` TEXT NOT NULL, `subtitle` TEXT,
+                        `posterUrl` TEXT, `addedAtMillis` INTEGER NOT NULL,
+                        PRIMARY KEY(`contentKey`))
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `playback_progress` (
+                        `contentKey` TEXT NOT NULL, `kind` TEXT NOT NULL,
+                        `contentId` INTEGER NOT NULL, `title` TEXT NOT NULL, `subtitle` TEXT,
+                        `positionSeconds` INTEGER NOT NULL, `durationSeconds` INTEGER NOT NULL,
+                        `posterUrl` TEXT, `updatedAtMillis` INTEGER NOT NULL,
+                        PRIMARY KEY(`contentKey`))
+                    """.trimIndent(),
+                )
+            }
+
+            override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+        }
+        val config = SupportSQLiteOpenHelper.Configuration.builder(context)
+            .name(fileName)
+            .callback(callback)
+            .build()
+        return FrameworkSQLiteOpenHelperFactory().create(config).writableDatabase
+    }
+
+    /**
+     * v2 -> v3 adds the panel's episode id, which the stream URL is built from.
+     *
+     * Rows survive with a null value, so the episode list stays populated and only needs that one
+     * series refetched before its episodes are playable again. Worth doing properly rather than by
+     * wiping the cache, which would cost the viewer their progress and favourites.
+     */
+    @Test
+    fun `migrating from version 2 adds the episode stream id without losing episodes`() = runTest {
+        val version2 = createVersion2Database()
+        version2.execSQL(
+            "INSERT INTO episodes (episodeRowKey,seriesId,seasonNumber,episodeNumber,title) " +
+                "VALUES ('3001:h1',3001,1,1,'An Episode')",
+        )
+        VOD_MIGRATION_2_3.migrate(version2)
+        version2.version = 3
+        version2.close()
+
+        val db = openMigrated()
+        try {
+            val episodes = db.vodDao().episodesFor(3001)
+            assertEquals(1, episodes.size)
+            assertEquals("An Episode", episodes.single().title)
+            // Null until the series is fetched again, which repopulates it.
+            assertEquals(null, episodes.single().streamId)
+        } finally {
+            db.close()
+        }
+    }
 
     @Test
     fun `a migrated database opens and keeps the viewers own data`() = runTest {

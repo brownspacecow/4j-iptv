@@ -22,7 +22,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         PlaybackProgressEntity::class,
         FavouriteEntity::class,
     ],
-    version = 2,
+    version = 3,
     exportSchema = true,
 )
 abstract class VodDatabase : RoomDatabase() {
@@ -59,6 +59,20 @@ val VOD_MIGRATION_1_2 = object : Migration(1, 2) {
             """.trimIndent(),
         )
         db.execSQL("CREATE INDEX IF NOT EXISTS `index_vod_categories_kind` ON `vod_categories` (`kind`)")
+    }
+}
+
+/**
+ * v2 -> v3: `episodes` gained `streamId`, the panel's own episode id.
+ *
+ * An additive column, so the existing rows are kept. They will have a null `streamId` and are
+ * treated as unplayable until the series is loaded again, which repopulates them - the catalogue
+ * is a cache and refetching one series is cheap, which is a far better trade than clearing the
+ * viewer's progress and favourites to satisfy a schema change.
+ */
+val VOD_MIGRATION_2_3 = object : Migration(2, 3) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `episodes` ADD COLUMN `streamId` TEXT")
     }
 }
 

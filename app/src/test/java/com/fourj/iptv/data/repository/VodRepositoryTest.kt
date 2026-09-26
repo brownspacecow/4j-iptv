@@ -381,17 +381,52 @@ class VodRepositoryTest {
         assertEquals("https://cdn.test/1.mkv", repository.episodeStreamUrl(repository.cachedEpisodes(555, 1).single()))
     }
 
+    /**
+     * An empty `direct_source` does not mean the episode is unplayable.
+     *
+     * This is the whole point. A real provider returns every episode with `direct_source: ""` and
+     * serves them perfectly well from the conventional `/series/` path, and reading that field
+     * alone reported an entire working library as broken. The panel id is enough to build the URL.
+     */
     @Test
-    fun `an episode with an empty direct source has no stream`() = runTest {
-        // What the real panel actually sends: the metadata is all there and the stream is blank.
-        // Reporting it as playable would hand the player an empty url.
+    fun `an empty direct source still yields a constructed series url`() = runTest {
         enqueue(
             """{"info":{"name":"x"},"episodes":{"1":[
-              {"id":"a","episode_num":"1","title":"One","season":1,"direct_source":""}]}}""",
+              {"id":"3054675","episode_num":"1","title":"One","season":1,
+               "container_extension":"mkv","direct_source":""}]}}""",
         )
         repository.loadSeriesDetail(556)
 
-        assertEquals(null, repository.episodeStreamUrl(repository.cachedEpisodes(556, 1).single()))
+        val episode = repository.cachedEpisodes(556, 1).single()
+        assertTrue(episode.isPlayable)
+        assertEquals(
+            "${server.url("/").toString().trimEnd('/')}/series/alice/secret/3054675.mkv",
+            repository.episodeStreamUrl(episode),
+        )
+    }
+
+    @Test
+    fun `an episode with neither a url nor a panel id has no stream`() = runTest {
+        // The only genuinely unplayable case: nothing to build a URL from.
+        enqueue("""{"info":{"name":"x"},"episodes":{"1":[{"episode_num":"1","title":"One","season":1}]}}""")
+        repository.loadSeriesDetail(557)
+
+        val episode = repository.cachedEpisodes(557, 1).firstOrNull()
+        // No id means the row is not stored at all, so nothing to press and nothing to explain.
+        assertEquals(null, episode)
+    }
+
+    @Test
+    fun `the default episode extension is used when none is declared`() = runTest {
+        enqueue(
+            """{"info":{"name":"x"},"episodes":{"1":[
+              {"id":"777","episode_num":"1","title":"One","season":1}]}}""",
+        )
+        repository.loadSeriesDetail(558)
+
+        val url = repository.episodeStreamUrl(repository.cachedEpisodes(558, 1).single())
+        assertNotNull(url)
+        assertTrue(url!!.endsWith("/777.mkv"))
     }
 
     @Test

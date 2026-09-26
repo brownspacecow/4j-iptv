@@ -45,7 +45,19 @@ internal fun describePlaybackError(error: PlaybackException): String {
 
             PlaybackException.ERROR_CODE_DECODING_FAILED,
             PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
-            -> "This device could not decode the channel. Try the other build of the app."
+            -> {
+                // Say which decoder gave up, because the remedy differs. The bundled FFmpeg is
+                // audio only, so a video failure is not fixed by installing the other build -
+                // telling someone to do that sends them somewhere useless. A real case: a HEVC
+                // series episode the device's own video decoder refused.
+                if (error.message?.contains("Video", ignoreCase = true) == true) {
+                    "This device cannot decode this video, often HEVC. The other build of the " +
+                        "app only adds audio decoders, so it will not help here."
+                } else {
+                    "This device could not decode the audio. The 'full' build adds software " +
+                        "decoders for Dolby and DTS if this one is silent."
+                }
+            }
 
             else -> "This channel would not play. It may be offline or restricted."
         }
