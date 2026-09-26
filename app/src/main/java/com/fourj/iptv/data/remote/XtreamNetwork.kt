@@ -17,8 +17,13 @@ import java.util.concurrent.TimeUnit
  *
  * Two clients, because they have genuinely different jobs:
  *  - [apiClient] talks JSON to the panel API and should give up quickly.
- *  - [playerClient] is handed to ExoPlayer for media segments, where a slow provider is normal
- *    and an aggressive read timeout causes stalls rather than clean errors.
+ *  - [createVodApi] is deliberately slower still, because film metadata is a big response.
+ *
+ * There is no client for media here, and there was one until this was checked. `playerClient` built
+ * a 20s/60s client for ExoPlayer and its comment claimed it was "handed to ExoPlayer for media
+ * segments" - it never was. Media goes through Media3's own `DefaultHttpDataSource`, configured in
+ * the player screens, so the client was built, stored on the container and never read. Its intent
+ * is now honoured where the media actually flows: see the timeouts in `PlayerScreen`.
  */
 object XtreamNetwork {
 
@@ -54,12 +59,6 @@ object XtreamNetwork {
             .connectTimeout(CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .readTimeout(READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .build()
-
-    fun playerClient(): OkHttpClient = baseBuilder()
-        .connectTimeout(PLAYER_CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-        .readTimeout(PLAYER_READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-        .retryOnConnectionFailure(true)
-        .build()
 
     fun createApi(profile: ProviderProfile, debugLogging: Boolean): XtreamApi =
         Retrofit.Builder()
@@ -97,8 +96,6 @@ object XtreamNetwork {
     private const val JSON_MEDIA_TYPE = "application/json"
     private const val CONNECT_TIMEOUT_SECONDS = 15L
     private const val READ_TIMEOUT_SECONDS = 30L
-    private const val PLAYER_CONNECT_TIMEOUT_SECONDS = 20L
-    private const val PLAYER_READ_TIMEOUT_SECONDS = 60L
 }
 
 /**

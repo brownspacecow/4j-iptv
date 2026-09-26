@@ -16,7 +16,6 @@ import com.fourj.iptv.data.repository.LiveRepository
 import com.fourj.iptv.data.repository.SearchRepository
 import com.fourj.iptv.data.repository.VodRepository
 import com.fourj.iptv.domain.model.ProviderProfile
-import okhttp3.OkHttpClient
 
 /**
  * Manual dependency container.
@@ -31,12 +30,6 @@ class AppContainer(context: Context) {
     private val appContext: Context = context.applicationContext
 
     val credentialStore: CredentialStore by lazy { CredentialStore(appContext) }
-
-    /**
-     * Shared with ExoPlayer for media segments. Separate from the API client because panel calls
-     * should time out fast while a slow stream should stall rather than error.
-     */
-    val playerHttpClient: OkHttpClient by lazy { XtreamNetwork.playerClient() }
 
     private val database: FourJDatabase by lazy {
         Room.databaseBuilder(appContext, FourJDatabase::class.java, DATABASE_NAME)

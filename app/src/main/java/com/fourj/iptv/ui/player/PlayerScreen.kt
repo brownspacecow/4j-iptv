@@ -129,7 +129,18 @@ fun PlayerScreen(
                     DefaultHttpDataSource.Factory()
                         .setDefaultRequestProperties(requestHeaders)
                         .setUserAgent(requestHeaders["User-Agent"] ?: DEFAULT_USER_AGENT)
-                        .setAllowCrossProtocolRedirects(true),
+                        .setAllowCrossProtocolRedirects(true)
+                        // ExoPlayer's defaults are 8s for both, which is fine for a file on a CDN
+                        // and too tight for a live MPEG-TS feed. A raw byte stream carries no
+                        // heartbeat - unlike HLS there is no segment boundary to arrive at - so a
+                        // channel can legitimately go quiet for a while during an origin-side source
+                        // switch or an ad break, and 8s turns a normal pause into a dead channel.
+                        //
+                        // Worth being clear that this is preventive, not the fix for the stall
+                        // observed on this provider: that one raised no error at all, so no timeout
+                        // had fired to raise. StallWatch is what recovers from it.
+                        .setConnectTimeoutMs(LIVE_CONNECT_TIMEOUT_MS)
+                        .setReadTimeoutMs(LIVE_READ_TIMEOUT_MS),
                 ),
             )
             .build()
@@ -215,13 +226,49 @@ fun PlayerScreen(
     // the audio decoder, which is heard as the old channel still audible - often looping -
     // underneath the new one. stop() releases the decoder and the AudioTrack; clearMediaItems()
     // drops the buffered segments that would otherwise be replayed.
-    LaunchedEffect(streamUrl) {
+    //
+    // Shared with the stall recovery below, because a wedged stream and a channel change need
+    // exactly the same thing: a new HTTP request, not a seek or a resume.
+    val restart: () -> Unit = {
         errorText = null
         player.stop()
         player.clearMediaItems()
         player.setMediaItem(MediaItem.fromUri(streamUrl))
         player.prepare()
         player.playWhenReady = true
+    }
+
+    LaunchedEffect(streamUrl) {
+        restart()
+    }
+
+    // Restart a live stream that has stopped being watchable.
+    //
+    // Not a luxury. On the real provider a channel plays for thirty to forty seconds and then the
+    // source ends; ExoPlayer sits at STATE_ENDED holding the last frame, and without this the
+    // viewer gets a frozen picture, no error and no way out but to zap. See StallWatch.
+    //
+    // The re-prepare is deliberately the same sequence the channel change uses: a dead or finished
+    // source needs a new HTTP request, not a seek or a resume.
+    LaunchedEffect(player) {
+        val watch = StallWatch()
+        while (true) {
+            delay(StallWatch.POLL_INTERVAL_MS)
+            val stalled = watch.observe(
+                state = player.playbackState,
+                playWhenReady = player.playWhenReady,
+                positionMs = player.currentPosition,
+                nowMs = android.os.SystemClock.elapsedRealtime(),
+            )
+            if (stalled) {
+                Log.w(
+                    TAG,
+                    "live stream stopped (state=${player.playbackState}); " +
+                        "restarting ${redactCredentials(streamUrl)}",
+                )
+                restart()
+            }
+        }
     }
 
     LaunchedEffect(overlayVisible) {
@@ -329,6 +376,19 @@ private fun PlayerOverlay(
 }
 
 private const val OVERLAY_TIMEOUT_MS = 4_000L
+
+/**
+ * Connection and read timeouts for a live stream, in place of ExoPlayer's 8s/8s.
+ *
+ * A live byte stream has no heartbeat to keep the read alive, so a quiet channel is ambiguous:
+ * either the network died or the origin is switching source. Failing fast cannot tell those apart,
+ * and 8s is short enough to catch the second case. Longer than a stalled connection is tolerable
+ * because [StallWatch] now restarts a stream that stops progressing, which is the recovery that
+ * actually matters.
+ */
+private const val LIVE_CONNECT_TIMEOUT_MS = 15_000
+private const val LIVE_READ_TIMEOUT_MS = 30_000
+
 private const val TAG = "4J"
 private const val DEFAULT_USER_AGENT =
     "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
