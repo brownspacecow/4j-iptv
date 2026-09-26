@@ -375,6 +375,12 @@ private fun TopBar(
             }
         }
         Spacer(Modifier.weight(1f))
+        // Sign out lives in the top bar rather than on the Live TV screen. It used to sit in that
+        // screen's own header row, and the D-pad could not reach it from anywhere - up from the
+        // category chips skipped past the header and landed on the "On now" row instead. A control
+        // you can only hit with a pointer is not a control on a television. It also belongs with
+        // the rest of the app's navigation, and it has to work from every tab, not just Live TV.
+        Button(onClick = onSignOut) { Text("Sign out") }
     }
 }
 

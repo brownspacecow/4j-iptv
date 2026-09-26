@@ -101,8 +101,8 @@ fun LiveScreen(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Spacer(Modifier.weight(1f))
-                Button(onClick = onSignOut) { Text("Sign out") }
+                // No Sign out button here any more. It moved to the app's top bar, where the
+                // D-pad can actually reach it and where it works from every tab.
             }
 
             LazyRow(
