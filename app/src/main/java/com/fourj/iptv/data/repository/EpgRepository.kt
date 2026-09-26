@@ -5,6 +5,7 @@ import com.fourj.iptv.data.local.EpgDao
 import com.fourj.iptv.data.local.EpgListingEntity
 import com.fourj.iptv.data.remote.retrying
 import com.fourj.iptv.data.remote.xtream.EpgListingDto
+import com.fourj.iptv.data.remote.xtream.ShortEpgResponse
 import com.fourj.iptv.data.remote.xtream.XtreamApi
 import com.fourj.iptv.domain.model.EpgListing
 import kotlinx.coroutines.CoroutineDispatcher
@@ -101,18 +102,44 @@ class EpgRepository(
     }
 
     private suspend fun fetchAndCache(streamId: Int) {
-        val listings = retrying(label = "get_short_epg[$streamId]") {
-            api.shortEpg(streamId = streamId, limit = EPG_LIMIT).listings
-        }.getOrElse { throwable ->
-            // A channel with no guide is normal, not an error worth surfacing. Log it and move on
-            // so one dead channel cannot fail the whole batch.
-            Log.w(TAG, "no guide for stream $streamId: ${throwable.message}")
+        val now = now() / 1000
+        val short = fetch(streamId) { api.shortEpg(streamId = streamId, limit = EPG_LIMIT) }
+
+        // A panel was observed returning only listings that had already ended from
+        // get_short_epg, so nothing matched the clock and the guide looked simply absent. Fall
+        // back to the full-day endpoint before concluding the channel has no guide at all.
+        val listings = if (short.none { it.overlaps(now) }) {
+            val full = fetch(streamId) { api.simpleDataTable(streamId = streamId) }
+            if (full.any { it.overlaps(now) }) full else short
+        } else {
+            short
+        }
+
+        if (listings.isEmpty()) {
+            Log.i(TAG, "stream $streamId: provider returned no listings")
             return
         }
 
-        if (listings.isEmpty()) return
-        epgDao.upsertAll(listings.mapNotNull { it.toEntity(streamId) })
+        val entities = listings.mapNotNull { it.toEntity(streamId) }
+        val onAir = entities.count { it.startEpochSeconds <= now && it.endEpochSeconds > now }
+        Log.i(
+            TAG,
+            "stream $streamId: ${listings.size} listings, $onAir on air now; " +
+                "stored as: " + entities.take(2).joinToString(" | ") { "'${it.title}'" },
+        )
+        epgDao.upsertAll(entities)
     }
+
+    private suspend fun fetch(
+        streamId: Int,
+        call: suspend () -> ShortEpgResponse,
+    ): List<EpgListingDto> = retrying(label = "epg[$streamId]", block = { call().listings })
+        .getOrElse { throwable ->
+            // A channel with no guide is normal, not an error worth surfacing. Log it and move on
+            // so one dead channel cannot fail the whole batch.
+            Log.w(TAG, "no guide for stream $streamId: ${throwable.message}")
+            emptyList()
+        }
 
     suspend fun clear() = withContext(ioDispatcher) { epgDao.clearStream(-1) }
 
@@ -136,16 +163,20 @@ class EpgRepository(
     }
 }
 
+internal fun EpgListingDto.overlaps(nowSeconds: Long): Boolean =
+    (startTimestamp ?: 0L) <= nowSeconds && (stopTimestamp ?: 0L) > nowSeconds
+
 internal fun EpgListingDto.toEntity(streamId: Int): EpgListingEntity? {
     if (title.isBlank()) return null
     val id = id.ifBlank { "${streamId}_${start}_${end}" }
     return EpgListingEntity(
         listingId = id,
         streamId = streamId,
-        title = title.trim(),
+        // Some panels Base64-encode titles; see decodePanelText for why this is not done blindly.
+        title = decodePanelText(title),
         startEpochSeconds = startTimestamp ?: 0L,
         endEpochSeconds = stopTimestamp ?: 0L,
-        description = description?.takeIf { it.isNotBlank() },
+        description = description?.takeIf { it.isNotBlank() }?.let(::decodePanelText),
         channelId = channelId,
         nowPlaying = nowPlaying == 1,
     )

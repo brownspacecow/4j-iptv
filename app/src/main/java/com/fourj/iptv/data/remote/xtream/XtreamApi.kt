@@ -43,4 +43,18 @@ interface XtreamApi {
         @Query("stream_id") streamId: Int,
         @Query("limit") limit: Int = 4,
     ): ShortEpgResponse
+
+    /**
+     * The full day's guide for one channel.
+     *
+     * Kept as a fallback for [shortEpg]. On a real provider, `get_short_epg` was observed
+     * returning only listings that had already finished - roughly sixteen hours stale - while
+     * this endpoint covers the current day. Neither is guaranteed to be better on any given
+     * panel, so the caller tries this only when the short guide has nothing on air.
+     */
+    @GET("player_api.php")
+    suspend fun simpleDataTable(
+        @Query("action") action: String = "get_simple_data_table",
+        @Query("stream_id") streamId: Int,
+    ): ShortEpgResponse
 }
