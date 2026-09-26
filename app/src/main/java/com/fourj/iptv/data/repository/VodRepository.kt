@@ -3,15 +3,17 @@ package com.fourj.iptv.data.repository
 import android.util.Log
 import com.fourj.iptv.data.local.EpisodeEntity
 import com.fourj.iptv.data.local.MovieEntity
+import com.fourj.iptv.data.local.replaceMoviesInCategory
+import com.fourj.iptv.data.local.replaceSeriesInCategory
 import com.fourj.iptv.data.local.SeriesEntity
 import com.fourj.iptv.data.local.VodCategoryEntity
 import com.fourj.iptv.data.local.VodDatabase
-import com.fourj.iptv.data.local.replaceMoviesInCategory
-import com.fourj.iptv.data.local.replaceSeriesInCategory
-import com.fourj.iptv.data.remote.StreamUrls
-import com.fourj.iptv.data.remote.runCatchingCancellable
 import com.fourj.iptv.data.remote.retrying
+import com.fourj.iptv.data.remote.runCatchingCancellable
+import com.fourj.iptv.data.remote.StreamUrls
+import com.fourj.iptv.data.remote.XtreamNetwork
 import com.fourj.iptv.data.remote.xtream.SeriesDto
+import com.fourj.iptv.data.remote.xtream.SeriesInfoResponse
 import com.fourj.iptv.data.remote.xtream.VodApi
 import com.fourj.iptv.data.remote.xtream.VodCategoryDto
 import com.fourj.iptv.data.remote.xtream.VodStreamDto
@@ -30,6 +32,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.decodeFromJsonElement
 
 /**
  * On-demand catalogue and library.
@@ -123,27 +126,42 @@ class VodRepository(
     /** Seasons and episodes for a series, cached so revisiting does not re-fetch. */
     suspend fun loadSeriesDetail(seriesId: Int): Result<List<Season>> = withContext(ioDispatcher) {
         runCatchingCancellable {
-            val response = retrying(label = "get_series_info[$seriesId]") {
+            val raw = retrying(label = "get_series_info[$seriesId]") {
                 api.seriesInfo(seriesId = seriesId)
             }.getOrThrow()
+            val response: SeriesInfoResponse =
+                XtreamNetwork.json.decodeFromJsonElement(raw)
 
-            val seasons = response.episodes?.seasons.orEmpty()
+            val seasons = response.seasons
             val rows = seasons.flatMap { season ->
                 val number = season.episodes.firstNotNullOfOrNull { it.season }
                     ?: season.id?.toIntOrNull()
                     ?: 0
                 season.episodes.mapNotNull { it.toEntity(seriesId, number) }
             }
-            // Worth a line in the log. "No episodes here" is otherwise indistinguishable between a
-            // series the provider has no episodes for and a payload this code failed to read, and
-            // those need very different fixes. Observed against a real provider: a series with full
-            // metadata and a poster, and no episodes at all.
             val returned = seasons.sumOf { it.episodes.size }
             Log.i(
                 TAG,
-                "series $seriesId: provider returned ${seasons.size} season(s), $returned episode(s); " +
-                    "stored ${rows.size}",
+                "series $seriesId: shape=${response.shape()} ${seasons.size} season(s), " +
+                    "$returned episode(s); stored ${rows.size}",
             )
+            // When nothing came back, name the keys that were actually present. Two panels have
+            // now nested this differently, and a count of zero says nothing about why - it only
+            // says where to look next.
+            if (rows.isEmpty()) {
+                Log.w(TAG, "series $seriesId: no episodes read. ${describeSeriesShape(raw)}")
+                // A window on the episodes section specifically. A prefix is all `seasons` on a
+                // large series, which is the least interesting part; the question is always
+                // whether the episodes carry a stream at all.
+                val text = raw.toString()
+                val at = text.indexOf("\"episodes\"")
+                val window = if (at >= 0) {
+                    text.substring(at, minOf(text.length, at + RAW_PREFIX))
+                } else {
+                    "(no episodes key)"
+                }
+                Log.w(TAG, "series $seriesId episodes: $window")
+            }
             if (returned > 0 && rows.isEmpty()) {
                 Log.w(
                     TAG,
@@ -329,7 +347,11 @@ internal fun com.fourj.iptv.data.remote.xtream.EpisodeDto.toEntity(
         episodeNumber = episodeNum ?: 0,
         title = title?.trim()?.takeIf { it.isNotEmpty() } ?: "Episode ${episodeNum ?: 0}",
         containerExtension = containerExtension?.trim()?.takeIf { it.isNotEmpty() },
-        sourceUrl = streams?.direct?.source?.trim()?.takeIf { it.isNotEmpty() },
+        // The stream lives under `streams.direct.source` in the common form, and in a flat
+        // `direct_source` in the TMDB-shaped one. Checked in that order because a panel sending
+        // the second has been seen leaving the first present but empty.
+        sourceUrl = streams?.direct?.source?.trim()?.takeIf { it.isNotEmpty() }
+            ?: directSource?.trim()?.takeIf { it.isNotEmpty() },
         mimeType = streams?.direct?.mimeType,
         durationSeconds = null,
     )
@@ -428,6 +450,44 @@ internal fun com.fourj.iptv.data.local.FavouriteEntity.toModel() = Favourite(
  */
 internal fun contentKey(kind: ContentKind, contentId: Int): String = "${kind.name}:$contentId"
 
+/** Which of the known response layouts this panel used, for the log. */
+internal fun com.fourj.iptv.data.remote.xtream.SeriesInfoResponse.shape(): String = when {
+    episodes is kotlinx.serialization.json.JsonObject &&
+        (episodes as kotlinx.serialization.json.JsonObject).containsKey("season") -> "nested"
+    episodes is kotlinx.serialization.json.JsonObject &&
+        (episodes as kotlinx.serialization.json.JsonObject).isNotEmpty() -> "keyed-by-season"
+    topLevelSeasons?.isNotEmpty() == true -> "summaries-only"
+    else -> "unrecognised"
+}
+
+/**
+ * A one-line description of where this payload keeps its seasons and episodes.
+ *
+ * Diagnostic only, and deliberately reads the raw JSON: a typed model has already discarded
+ * anything it did not recognise by the time it reaches here, which is exactly the information
+ * needed to work out why nothing was read. Panels disagree about this nesting, and three
+ * different layouts have now turned up.
+ */
+internal fun describeSeriesShape(raw: kotlinx.serialization.json.JsonObject): String {
+    fun kind(key: String): String = when (val v = raw[key]) {
+        null -> "$key=absent"
+        is kotlinx.serialization.json.JsonObject -> {
+            val firstValue = v.values.filterIsInstance<kotlinx.serialization.json.JsonObject>().firstOrNull()
+            buildString {
+                append("$key={keys: ${v.keys.joinToString(",")}")
+                if (firstValue != null) {
+                    append("; first value keys: ${firstValue.keys.joinToString(",")}")
+                }
+                append('}')
+            }
+        }
+        is kotlinx.serialization.json.JsonArray ->
+            "$key=[${v.size} items; first=${(v.firstOrNull() as? kotlinx.serialization.json.JsonObject)?.keys?.joinToString(",") ?: "scalar/empty"}]"
+        else -> "$key=${v::class.simpleName}"
+    }
+    return listOf("seasons", "episodes", "info").joinToString("  ") { kind(it) }
+}
+
 /**
  * Key for an episode, which has no usable numeric id.
  *
@@ -436,3 +496,6 @@ internal fun contentKey(kind: ContentKind, contentId: Int): String = "${kind.nam
 internal fun episodeContentKey(episodeRowKey: String): String = "${ContentKind.EPISODE.name}:$episodeRowKey"
 
 private const val TAG = "4J"
+
+/** How much of a payload to dump when nothing could be read from it. */
+private const val RAW_PREFIX = 900

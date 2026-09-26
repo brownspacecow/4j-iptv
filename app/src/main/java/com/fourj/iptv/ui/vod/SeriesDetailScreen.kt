@@ -130,6 +130,19 @@ fun SeriesDetailScreen(
                     }
                 }
                 Spacer(Modifier.height(12.dp))
+
+            // An explanation for a tap that could not do anything, rather than silence.
+            detail.notice?.let { notice ->
+                Text(
+                    text = notice,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(
+                        horizontal = uiScale.horizontalMarginDp.dp,
+                        vertical = 6.dp,
+                    ),
+                )
+            }
             }
 
             when {
@@ -174,10 +187,24 @@ fun SeriesDetailScreen(
                                 Text(
                                     text = episode.title,
                                     style = MaterialTheme.typography.titleMedium,
-                                    color = MaterialTheme.colorScheme.onSurface,
+                                    // Muted when there is no stream behind it, so an unplayable
+                                    // episode is visible before it is pressed rather than after.
+                                    color = if (episode.sourceUrl.isNullOrBlank()) {
+                                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurface
+                                    },
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                 )
+                                if (episode.sourceUrl.isNullOrBlank()) {
+                                    Spacer(Modifier.weight(1f))
+                                    Text(
+                                        text = "no stream",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                                    )
+                                }
                             }
                         }
                     }

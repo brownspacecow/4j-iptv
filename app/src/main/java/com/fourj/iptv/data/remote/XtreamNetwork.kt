@@ -22,7 +22,14 @@ import java.util.concurrent.TimeUnit
  */
 object XtreamNetwork {
 
-    private val json = Json {
+    /**
+     * The lenient JSON configuration, exposed for the one place that decodes a response by hand.
+     *
+     * Shared rather than duplicated so it cannot drift from what Retrofit's converter accepts -
+     * a response the converter tolerates and one a second, stricter instance rejects would be a
+     * maddening bug to chase.
+     */
+    val json: Json = Json {
         ignoreUnknownKeys = true
         coerceInputValues = true
         explicitNulls = false

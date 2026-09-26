@@ -39,6 +39,8 @@ class VodRepositoryTest {
     private lateinit var database: VodDatabase
     private lateinit var repository: VodRepository
 
+    private val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+
     private val profile = ProviderProfile(
         baseUrl = "http://panel.test",
         username = "alice",
@@ -277,6 +279,139 @@ class VodRepositoryTest {
 
         assertTrue(result.isSuccess)
         assertEquals(emptyList<Int>(), result.getOrThrow().map { it.number })
+    }
+
+    /**
+     * A real provider nests seasons at the top level, not under `episodes.season`.
+     *
+     * Reading only the documented shape made every series on that panel report zero seasons, and
+     * a count of zero is indistinguishable from genuinely empty data - so this failed quietly in
+     * the field rather than loudly. Both layouts have to be accepted.
+     */
+    @Test
+    fun `reads a top-level seasons payload as well as the nested one`() = runTest {
+        enqueue(
+            """
+            {
+              "info": {"name": "Top Level Panel", "plot": "Seasons at the top."},
+              "seasons": [
+                {"air_date": "2024-01-01", "id": "1", "name": "Season 1", "episodes": [
+                  {"id":"e1","episode_num":1,"title":"One","season":1,"info_hash":"h1",
+                   "container_extension":"mp4",
+                   "streams":{"direct":{"source":"https://cdn.test/1.mp4","mime_type":"video/mp4"}}},
+                  {"id":"e2","episode_num":2,"title":"Two","season":1,"info_hash":"h2",
+                   "container_extension":"mp4",
+                   "streams":{"direct":{"source":"https://cdn.test/2.mp4","mime_type":"video/mp4"}}}
+                ]},
+                {"air_date": "2024-06-01", "id": "2", "name": "Season 2", "episodes": [
+                  {"id":"e3","episode_num":1,"title":"One","season":2,"info_hash":"h3",
+                   "container_extension":"mp4",
+                   "streams":{"direct":{"source":"https://cdn.test/3.mp4","mime_type":"video/mp4"}}}
+                ]}
+              ]
+            }
+            """.trimIndent(),
+        )
+
+        val seasons = repository.loadSeriesDetail(999).getOrThrow()
+        assertEquals(listOf(1, 2), seasons.map { it.number })
+        assertEquals(2, repository.cachedEpisodes(999, 1).size)
+        assertEquals(1, repository.cachedEpisodes(999, 2).size)
+    }
+
+    /**
+     * A real provider keys episodes by season number, and sends `episode_num` as a *string*.
+     *
+     * Reading only the documented `episodes.season` shape made every series on that panel report
+     * zero episodes, and a count of zero is indistinguishable from genuinely empty data - so this
+     * failed quietly in the field rather than loudly. The string-typed number matters too: decoding
+     * `"1"` into an Int throws, and one such episode would take the whole series with it.
+     */
+    @Test
+    fun `reads episodes keyed by season number with string-typed numbers`() = runTest {
+        enqueue(
+            """
+            {
+              "info": {"name": "Keyed Panel", "plot": "Episodes keyed by season."},
+              "seasons": [
+                {"air_date":"1957-04-24","episode_count":2,"id":19715,"name":"1957",
+                 "season_number":1,"cover":"https://image.tmdb.org/x"}
+              ],
+              "episodes": {
+                "1": [
+                  {"id":"3054675","episode_num":"1","title":"S01E01","container_extension":"mkv",
+                   "season":1,"direct_source":""},
+                  {"id":"3054676","episode_num":"2","title":"S01E02","container_extension":"mkv",
+                   "season":1,"direct_source":""}
+                ],
+                "2": [
+                  {"id":"3054677","episode_num":"1","title":"S02E01","container_extension":"mkv",
+                   "season":2,"direct_source":""}
+                ]
+              }
+            }
+            """.trimIndent(),
+        )
+
+        val seasons = repository.loadSeriesDetail(777).getOrThrow()
+        assertEquals(listOf(1, 2), seasons.map { it.number })
+
+        val s1 = repository.cachedEpisodes(777, 1)
+        assertEquals(2, s1.size)
+        assertEquals(listOf(1, 2), s1.map { it.episodeNumber })
+        assertEquals("S01E01", s1.first().title)
+
+        // The season number comes from the map key, so it must survive even when an episode omits it.
+        val noSeasonField = repository.cachedEpisodes(777, 2)
+        assertEquals(1, noSeasonField.size)
+        assertEquals(2, noSeasonField.single().seasonNumber)
+    }
+
+    @Test
+    fun `a flat direct source is used when there is no streams object`() = runTest {
+        enqueue(
+            """
+            {"info":{"name":"x"},"episodes":{"1":[
+              {"id":"a","episode_num":"1","title":"One","season":1,
+               "direct_source":"https://cdn.test/1.mkv"}]}}
+            """.trimIndent(),
+        )
+        repository.loadSeriesDetail(555)
+
+        assertEquals("https://cdn.test/1.mkv", repository.episodeStreamUrl(repository.cachedEpisodes(555, 1).single()))
+    }
+
+    @Test
+    fun `an episode with an empty direct source has no stream`() = runTest {
+        // What the real panel actually sends: the metadata is all there and the stream is blank.
+        // Reporting it as playable would hand the player an empty url.
+        enqueue(
+            """{"info":{"name":"x"},"episodes":{"1":[
+              {"id":"a","episode_num":"1","title":"One","season":1,"direct_source":""}]}}""",
+        )
+        repository.loadSeriesDetail(556)
+
+        assertEquals(null, repository.episodeStreamUrl(repository.cachedEpisodes(556, 1).single()))
+    }
+
+    @Test
+    fun `the nested payload still works after the keyed one was added`() = runTest {
+        enqueue(SERIES_INFO)
+        val seasons = repository.loadSeriesDetail(3001).getOrThrow()
+
+        assertEquals(listOf(1, 2), seasons.map { it.number })
+        assertEquals(3, repository.cachedEpisodes(3001, 1).size)
+    }
+
+    @Test
+    fun `each payload shape reports which one it was`() = runTest {
+        fun shapeOf(body: String) =
+            json.decodeFromString<com.fourj.iptv.data.remote.xtream.SeriesInfoResponse>(body).shape()
+
+        assertEquals("nested", shapeOf(SERIES_INFO))
+        assertEquals("keyed-by-season", shapeOf("""{"episodes":{"1":[{"id":"a","info_hash":"h"}]}}"""))
+        assertEquals("summaries-only", shapeOf("""{"seasons":[{"id":"1","season_number":1}]}"""))
+        assertEquals("unrecognised", shapeOf("""{"info":{"name":"x"}}"""))
     }
 
     // -----------------------------------------------------------------------------------------

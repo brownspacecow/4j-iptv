@@ -67,6 +67,13 @@ data class SeriesDetailState(
     val episodes: List<Episode> = emptyList(),
     val isLoading: Boolean = false,
     val error: String? = null,
+    /**
+     * Why a tap did nothing.
+     *
+     * Worth having: an episode with no stream is a real thing on a real provider, and silently
+     * ignoring the press is indistinguishable from a broken app.
+     */
+    val notice: String? = null,
 )
 
 data class LibraryState(
@@ -283,6 +290,15 @@ class VodViewModel(
     fun closeDetail() {
         _state.update { it.copy(detail = null) }
         _seriesDetail.value = null
+    }
+
+    /** Explain a tap that could not do anything, so it does not read as the app hanging. */
+    fun reportNotice(message: String) {
+        _seriesDetail.update { it?.copy(notice = message) }
+    }
+
+    fun clearNotice() {
+        _seriesDetail.update { it?.copy(notice = null) }
     }
 
     fun movieUrl(movie: Movie): String = repository.movieStreamUrl(movie)

@@ -1,5 +1,6 @@
 package com.fourj.iptv.data.remote.xtream
 
+import kotlinx.serialization.json.JsonObject
 import retrofit2.http.GET
 import retrofit2.http.Query
 
@@ -45,9 +46,18 @@ interface VodApi {
         @Query("category_id") categoryId: String? = null,
     ): List<SeriesDto>
 
+    /**
+     * `action=get_series_info`, returned as raw JSON rather than a typed model.
+     *
+     * Deliberate. The payload shape varies between panels - this one nests seasons at the top
+     * level rather than under `episodes`, and where the episodes sit inside a season varies too -
+     * and a typed model silently drops whatever it does not recognise, which looks exactly like a
+     * series with no episodes. Decoding here means the keys can be logged when nothing is found,
+     * instead of the failure being invisible.
+     */
     @GET("player_api.php")
     suspend fun seriesInfo(
         @Query("action") action: String = "get_series_info",
         @Query("series_id") seriesId: Int,
-    ): SeriesInfoResponse
+    ): JsonObject
 }

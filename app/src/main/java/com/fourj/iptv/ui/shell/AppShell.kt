@@ -281,16 +281,27 @@ fun AppShell(
                                 detail = seriesState,
                                 onSeasonChange = vodViewModel::selectSeason,
                                 onEpisodeClick = { episode ->
-                                    val url = vodViewModel.episodeUrl(episode) ?: return@SeriesDetailScreen
-                                    vodPlayback = VodPlayback.EpisodePlayback(
-                                        title = episode.title,
-                                        subtitle = "${seriesState.series.name} · " +
-                                            "S${episode.seasonNumber}E${episode.episodeNumber}",
-                                        url = url,
-                                        progressKey = vodViewModel.progressKeyForEpisode(episode),
-                                        posterUrl = seriesState.series.posterUrl,
-                                        resumeSeconds = 0,
-                                    )
+                                    val url = vodViewModel.episodeUrl(episode)
+                                    if (url == null) {
+                                        // A real panel can list an episode with no stream behind it -
+                                        // the Sky at Night on the provider tested, where every
+                                        // episode had an empty direct_source. Say so, rather than
+                                        // swallowing the press and looking broken.
+                                        vodViewModel.reportNotice(
+                                            "\"${episode.title}\" has no stream on your provider.",
+                                        )
+                                    } else {
+                                        vodViewModel.clearNotice()
+                                        vodPlayback = VodPlayback.EpisodePlayback(
+                                            title = episode.title,
+                                            subtitle = "${seriesState.series.name} · " +
+                                                "S${episode.seasonNumber}E${episode.episodeNumber}",
+                                            url = url,
+                                            progressKey = vodViewModel.progressKeyForEpisode(episode),
+                                            posterUrl = seriesState.series.posterUrl,
+                                            resumeSeconds = 0,
+                                        )
+                                    }
                                 },
                                 onBack = vodViewModel::closeDetail,
                             )
