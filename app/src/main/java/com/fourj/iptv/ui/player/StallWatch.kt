@@ -36,6 +36,31 @@ import androidx.media3.common.Player
  * by the time a source has *ended* there is no read to time out - the player had already been told,
  * politely, that the stream was over.
  */
+/**
+ * What is wrong with a live stream, and therefore how it has to be recovered.
+ *
+ * The two are not interchangeable. [SOURCE_ENDED] means the provider closed the connection and the
+ * source is at end of file, so the new one can simply be opened on top of the old. [NO_PROGRESS]
+ * means a stream is still mid-flight and has stopped delivering, so it has to be torn down first or
+ * its remaining samples keep feeding the decoders underneath the replacement - which is heard as
+ * the old channel still playing under the new one.
+ */
+internal enum class LiveFault {
+    NONE,
+
+    /** The source reached its end. Reopening in place is enough, and keeps the audio track alive. */
+    SOURCE_ENDED,
+
+    /** Playing but going nowhere, or stuck buffering. Needs a full restart. */
+    NO_PROGRESS,
+}
+
+/**
+ * Notices when a **live** stream has stopped being watchable.
+ *
+ * Built from an observed failure on the real provider, and the first version of this was wrong in an
+ * instructive way.
+ */
 internal class StallWatch(
     /** How long a playing stream may go without advancing before it counts as stalled. */
     private val stallAfterMs: Long = STALL_AFTER_MS,
@@ -56,26 +81,30 @@ internal class StallWatch(
     private var lastRestartAtMs = Long.MIN_VALUE
 
     /**
-     * Whether the stream needs restarting. Reports once, then resets.
+     * Whether the stream needs restarting, and how. Reports once, then resets.
      *
-     * One-shot matters: the caller restarts playback, and a watcher that kept firing would restart
-     * the stream in a tight loop.
+     * The distinction matters to the caller. A source that has *ended* can be reopened in place,
+     * keeping the audio track alive; one that is wedged mid-stream has to be torn down, or its
+     * samples keep feeding the decoders underneath the new one.
+     *
+     * One-shot matters: the caller acts on this, and a watcher that kept firing would restart the
+     * stream in a tight loop.
      */
-    fun observe(state: Int, playWhenReady: Boolean, positionMs: Long, nowMs: Long): Boolean {
+    fun observe(state: Int, playWhenReady: Boolean, positionMs: Long, nowMs: Long): LiveFault {
         // Paused on purpose is not a fault. This app never pauses live TV, but a player can be
         // paused while the activity is backgrounded, and restarting it then would fight the user.
         if (!playWhenReady) {
             reset()
-            return false
+            return LiveFault.NONE
         }
 
-        if (tooSoonToRestart(nowMs)) return false
+        if (tooSoonToRestart(nowMs)) return LiveFault.NONE
 
         // A live stream that has ended is the failure this whole class exists for. A television
         // channel does not finish, so the source dropped and the only useful response is to open it
         // again and pick up a new live edge.
         if (state == Player.STATE_ENDED) {
-            return report(nowMs)
+            return report(nowMs, LiveFault.SOURCE_ENDED)
         }
 
         // Buffering before the first frame is normal, even on a slow panel, so it gets a patient
@@ -84,43 +113,43 @@ internal class StallWatch(
             val since = bufferingSinceMs
             if (since == null) {
                 bufferingSinceMs = nowMs
-                return false
+                return LiveFault.NONE
             }
-            if (nowMs - since < bufferingAfterMs) return false
-            return report(nowMs)
+            if (nowMs - since < bufferingAfterMs) return LiveFault.NONE
+            return report(nowMs, LiveFault.NO_PROGRESS)
         }
         bufferingSinceMs = null
 
         // Idle is what a player is briefly between stop() and prepare(), so it is not judged.
         if (state != Player.STATE_READY) {
             lastPositionMs = NO_POSITION
-            return false
+            return LiveFault.NONE
         }
 
         if (positionMs != lastPositionMs) {
             lastPositionMs = positionMs
             lastProgressAtMs = nowMs
-            return false
+            return LiveFault.NONE
         }
 
         // The first reading after a restart has nothing to compare against, so it is recorded
         // rather than counted - however long the previous stall lasted.
         if (lastProgressAtMs == 0L) {
             lastProgressAtMs = nowMs
-            return false
+            return LiveFault.NONE
         }
 
-        if (nowMs - lastProgressAtMs < stallAfterMs) return false
-        return report(nowMs)
+        if (nowMs - lastProgressAtMs < stallAfterMs) return LiveFault.NONE
+        return report(nowMs, LiveFault.NO_PROGRESS)
     }
 
     private fun tooSoonToRestart(nowMs: Long): Boolean =
         lastRestartAtMs != Long.MIN_VALUE && nowMs - lastRestartAtMs < minRestartGapMs
 
-    private fun report(nowMs: Long): Boolean {
+    private fun report(nowMs: Long, fault: LiveFault): LiveFault {
         lastRestartAtMs = nowMs
         reset()
-        return true
+        return fault
     }
 
     private fun reset() {

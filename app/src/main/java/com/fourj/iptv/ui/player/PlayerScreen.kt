@@ -238,6 +238,27 @@ fun PlayerScreen(
         player.playWhenReady = true
     }
 
+    /**
+     * Reopen a source that reached its end, without tearing the player down.
+     *
+     * This provider serves every live channel as a short burst - measured from the host, four
+     * different streams ended after 32s, 34s, 19s and 11s - so this runs every half minute or so and
+     * the difference between the two paths is the difference between an occasional blip and a
+     * constant one.
+     *
+     * `stop()` releases the AudioTrack, and releasing and recreating an audio track is audibly a
+     * pop. Doing that every thirty seconds is the glitching. So this path skips it, which is only
+     * safe because the old source is at end of file: there is nothing left in it to keep feeding the
+     * decoders, which is the entire reason the zapping path above needs `stop()` at all.
+     */
+    val reopenAfterEnd: () -> Unit = {
+        errorText = null
+        player.clearMediaItems()
+        player.setMediaItem(MediaItem.fromUri(streamUrl))
+        player.prepare()
+        player.playWhenReady = true
+    }
+
     LaunchedEffect(streamUrl) {
         restart()
     }
@@ -254,19 +275,26 @@ fun PlayerScreen(
         val watch = StallWatch()
         while (true) {
             delay(StallWatch.POLL_INTERVAL_MS)
-            val stalled = watch.observe(
+            val fault = watch.observe(
                 state = player.playbackState,
                 playWhenReady = player.playWhenReady,
                 positionMs = player.currentPosition,
                 nowMs = android.os.SystemClock.elapsedRealtime(),
             )
-            if (stalled) {
-                Log.w(
-                    TAG,
-                    "live stream stopped (state=${player.playbackState}); " +
-                        "restarting ${redactCredentials(streamUrl)}",
-                )
-                restart()
+            when (fault) {
+                LiveFault.NONE -> Unit
+                LiveFault.SOURCE_ENDED -> {
+                    Log.i(TAG, "live source ended; reopening ${redactCredentials(streamUrl)}")
+                    reopenAfterEnd()
+                }
+                LiveFault.NO_PROGRESS -> {
+                    Log.w(
+                        TAG,
+                        "live stream stopped progressing (state=${player.playbackState}); " +
+                            "restarting ${redactCredentials(streamUrl)}",
+                    )
+                    restart()
+                }
             }
         }
     }
