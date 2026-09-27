@@ -225,6 +225,43 @@ class LiveViewModel(
     suspend fun findChannel(streamId: Int): LiveChannel? = repository.findChannel(streamId)
 
     /**
+     * A channel to play from a search hit, whether or not its category has ever been opened.
+     *
+     * This exists because the cache lookup above misses far more often than it should, and the
+     * consequence was that most live search results did nothing at all. Search indexes channels into
+     * its own index - names and ids only - while `findChannel` reads the browse cache, which is
+     * populated only for categories the viewer has actually opened. So a hit from any category
+     * nobody had visited resolved to null, and the caller had no way to play it.
+     *
+     * That is not a corner case, it is the normal case for a search-first app: the entire point is
+     * to find the channel you have never browsed to. Typing "sky" on a fresh install found sixteen
+     * channels, and every one of them silently refused to play.
+     *
+     * A search hit already carries the stream id and the name, and an Xtream live URL is
+     * `/live/<user>/<pass>/<id>.ts`, so the stream is addressable without the category ever being
+     * loaded. `ts` is the right default: it is what the panel serves unless it says otherwise, and
+     * when the channel is later opened normally the cached record arrives with the real container
+     * extension and takes over.
+     */
+    fun channelForSearchHit(
+        streamId: Int,
+        name: String,
+        categoryId: String?,
+        iconUrl: String?,
+    ): LiveChannel = LiveChannel(
+        streamId = streamId,
+        name = name,
+        categoryId = categoryId,
+        iconUrl = iconUrl,
+        containerExtension = "ts",
+        directSource = null,
+        httpUserAgent = null,
+        httpReferrer = null,
+        hasArchive = false,
+        archiveDurationDays = null,
+    )
+
+    /**
      * Make sure a channel's category is on screen before playing it.
      *
      * Search can surface a channel from a shelf the viewer has never opened, and the player is

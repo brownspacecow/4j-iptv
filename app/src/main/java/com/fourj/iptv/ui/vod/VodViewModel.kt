@@ -419,6 +419,82 @@ class VodViewModel(
 
     fun episodeUrl(episode: Episode): String? = repository.episodeStreamUrl(episode)
 
+    /**
+     * A film to play from a search hit, fetching the shelf first when the record is not cached.
+     *
+     * Films cannot be synthesised the way a live channel can. A live stream is reliably `.ts` on an
+     * Xtream panel, so the stream id alone addresses it. A film is `.mp4`, `.mkv`, `.avi`, `.ts` or
+     * a dozen other things and the search index does not record which - it holds names and ids only.
+     *
+     * Guessing produces a URL the panel cannot serve. Verified on this account: a search hit for
+     * "Dreamgirls (2006)" was given a `.mp4` url, the click worked, the player opened, and then died
+     * with "Atom size less than header length" - a Matroska file behind an mp4 url. That is worse
+     * than useless, because it looks like the film is broken rather than like the app guessed.
+     *
+     * So when the film is not already cached, its category is fetched - one request, the same one
+     * tapping the category chip would make - and the real record is used, with its true container
+     * extension, plot, rating and panel headers. The synthesised film stays as a last resort so a hit
+     * from a shelf the provider will not serve still opens something.
+     */
+    suspend fun movieForSearchHit(
+        streamId: Int,
+        name: String,
+        categoryId: String?,
+        posterUrl: String?,
+    ): Movie {
+        if (categoryId != null) {
+            repository.ensureCategoryLoaded(categoryId, ContentKind.MOVIE)
+            repository.findMovie(streamId)?.let { return it }
+        }
+        return Movie(
+            id = streamId,
+            name = name,
+            categoryId = categoryId,
+            posterUrl = posterUrl,
+            backdropUrl = null,
+            containerExtension = null,
+            directSource = null,
+            httpUserAgent = null,
+            httpReferrer = null,
+            rating = null,
+            plot = null,
+            durationSeconds = null,
+        )
+    }
+
+    /**
+     * A series to open from a search hit, whether or not its shelf has ever been opened.
+     *
+     * A series cannot be played directly - an episode has to be picked, and guessing one would be
+     * wrong - so what a hit needs is enough to open the detail screen. Episodes are then fetched by
+     * series id, but the series row itself still has to come from somewhere, and a synthesised one
+     * would show a detail screen with no artwork or description and nothing to tell it apart from a
+     * real one. One category request is cheap for that.
+     */
+    suspend fun seriesForSearchHit(
+        seriesId: Int,
+        name: String,
+        categoryId: String?,
+        posterUrl: String?,
+    ): Series {
+        if (categoryId != null) {
+            repository.ensureCategoryLoaded(categoryId, ContentKind.SERIES)
+            repository.findSeries(seriesId)?.let { return it }
+        }
+        return Series(
+            id = seriesId,
+            name = name,
+            categoryId = categoryId,
+            posterUrl = posterUrl,
+            plot = null,
+            cast = null,
+            director = null,
+            genre = null,
+            releaseDate = null,
+            rating = null,
+        )
+    }
+
     /** The key a film or episode's resume position is stored under. */
     fun progressKeyForMovie(movieId: Int): String = contentKey(ContentKind.MOVIE, movieId)
 

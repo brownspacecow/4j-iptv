@@ -51,9 +51,7 @@ import com.fourj.iptv.ui.theme.LocalUiScale
 fun VodBrowseScreen(
     state: VodUiState,
     section: VodSection,
-    library: LibraryState,
     onCategoryChange: (String) -> Unit,
-    onResumeClick: (com.fourj.iptv.domain.model.PlaybackProgress) -> Unit,
     onMovieClick: (Movie) -> Unit,
     onSeriesClick: (Series) -> Unit,
     onRefresh: () -> Unit,
@@ -69,13 +67,10 @@ fun VodBrowseScreen(
             // No Movies/Series switcher in here on purpose: the app's top bar already carries both,
             // and a second control for the same choice is a trap - two things to keep in step, and
             // the viewer has to work out which one is the real tab.
-            if (library.continueWatching.isNotEmpty()) {
-                ContinueWatchingRow(
-                    items = library.continueWatching,
-                    onClick = onResumeClick,
-                    modifier = Modifier.padding(bottom = 12.dp),
-                )
-            }
+            // No "continue watching" row here. It used to sit above the category chips on this
+            // screen, which meant it appeared on both the films and the series tab - the same two or
+            // three cards twice over, pushing the shelf you came to see further down the screen. It
+            // belongs in one place, and Library is that place.
 
             LazyRow(
                 modifier = Modifier.fillMaxWidth(),
@@ -301,66 +296,6 @@ private fun Poster(url: String?, modifier: Modifier = Modifier) {
     }
 }
 
-@Composable
-private fun ContinueWatchingRow(
-    items: List<com.fourj.iptv.domain.model.PlaybackProgress>,
-    onClick: (com.fourj.iptv.domain.model.PlaybackProgress) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val resumable = items.filter { it.isResumable }
-    if (resumable.isEmpty()) return
-    Column(modifier = modifier.padding(horizontal = LocalUiScale.current.horizontalMarginDp.dp)) {
-        Text(
-            text = "Continue watching",
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.onBackground,
-        )
-        Spacer(Modifier.height(8.dp))
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            // Keyed on the content key, not the numeric id. An episode's numeric id is
-            // zero - it has none - so keying on it makes every episode collide, and
-            // watching a second one crashes the app on a duplicate lazy-list key.
-            items(count = resumable.size, key = { resumable[it].contentKey }) { index ->
-                val progress = resumable[index]
-                Card(
-                    onClick = { onClick(progress) },
-                    modifier = Modifier.width(220.dp),
-                    scale = CardDefaults.scale(focusedScale = 1.05f),
-                ) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        Text(
-                            text = progress.title,
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        Spacer(Modifier.height(6.dp))
-                        Text(
-                            text = "${(progress.fraction * 100).toInt()}% watched",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurface,
-                        )
-                        Spacer(Modifier.height(6.dp))
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(3.dp)
-                                .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.25f)),
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth(progress.fraction)
-                                    .height(3.dp)
-                                    .background(MaterialTheme.colorScheme.primary),
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
 
 @Composable
 internal fun Message(text: String, color: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onBackground) {

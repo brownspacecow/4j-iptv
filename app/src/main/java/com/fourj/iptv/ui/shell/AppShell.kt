@@ -105,14 +105,19 @@ fun AppShell(
     var vodPlayback by remember { mutableStateOf<VodPlayback?>(null) }
 
     /**
-     * Search is an overlay rather than a fifth tab.
+     * Search, and it opens first.
      *
-     * A tab would give it a permanent slot in the top bar, and it is not a place the viewer lives -
-     * it is a question they ask and then leave. Worse, a tab is one of the arrow keys wide, and on a
-     * ten-foot interface every keypress has to earn its place. An overlay keeps the tabs meaning
-     * "where am I" and leaves search as "find me something", which is a different job.
+     * It was an overlay rather than a fifth tab, which was the right call about the top bar but wrong
+     * about the priority: making it something you had to navigate to meant every single search began
+     * with walking the tab bar to reach it. On a ten-foot interface, with an on-screen keyboard that
+     * is slow to begin with, spending the first two presses of every search on getting to the search
+     * box was the wrong trade.
+     *
+     * So the app opens here, with the field already focused and the keyboard up. Reaching search
+     * costs nothing, and the tabs are still there for when the viewer wants to browse instead - they
+     * are simply no longer in the way of the thing people mostly want.
      */
-    var searchOpen by remember { mutableStateOf(false) }
+    var searchOpen by remember { mutableStateOf(true) }
 
     /**
      * Sync is a screen of its own rather than a control buried in search.
@@ -246,6 +251,9 @@ fun AppShell(
                     onSignOut = onSignOut,
                     onSearch = { searchOpen = true; syncOpen = false },
                     onSync = { syncOpen = true; searchOpen = false },
+                    // No tabs while searching: the viewer is typing a question, not asking where they
+                    // are, and the row is the only thing focus can escape into.
+                    compact = true,
                 )
                 if (syncOpen) {
                     SyncScreen(
@@ -265,51 +273,76 @@ fun AppShell(
                         scope.launch {
                             when (hit.kind) {
                                 ContentKind.LIVE_CHANNEL -> {
-                                    val channel = liveViewModel.findChannel(hit.contentId)
-                                    if (channel != null) {
-                                        searchOpen = false
-                                        destination = TopLevel.LIVE
-                                        // Switch the grid to the channel's own category first, so
-                                        // the browse screen and the player agree on what is loaded.
+                                    // Cached if the viewer has opened this category, synthesised from
+                                    // the hit if not. The old code played only on a cache hit and did
+                                    // nothing otherwise, so every live channel from a category nobody
+                                    // had browsed - which is most of what search is for - was a button
+                                    // that did nothing when pressed.
+                                    val cached = liveViewModel.findChannel(hit.contentId)
+                                    val channel = cached ?: liveViewModel.channelForSearchHit(
+                                        streamId = hit.contentId,
+                                        name = hit.name,
+                                        categoryId = hit.categoryId,
+                                        iconUrl = hit.iconUrl,
+                                    )
+                                    searchOpen = false
+                                    destination = TopLevel.LIVE
+                                    if (cached != null) {
+                                        // Only worth doing when there is a grid to agree with. For a
+                                        // synthesised channel this would pull down a whole live
+                                        // category the viewer never asked for, which is the opposite
+                                        // of what a search-first flow should do.
                                         liveViewModel.revealChannel(channel)
-                                        liveViewModel.play(channel)
                                     }
+                                    liveViewModel.play(channel)
                                 }
 
                                 ContentKind.MOVIE -> {
+                                    // Cached if the shelf has been opened, synthesised from the hit if
+                                    // not. The old code played only on a cache hit and did nothing
+                                    // otherwise, so every film on a shelf nobody had browsed was a
+                                    // result that silently refused to play.
                                     val movie = vodViewModel.findMovieById(hit.contentId)
-                                    if (movie != null) {
-                                        searchOpen = false
-                                        destination = TopLevel.MOVIES
-                                        vodViewModel.revealCategory(movie.categoryId)
-                                        vodViewModel.openMovie(movie)
-                                        val progress = library.progress(ContentKind.MOVIE, movie.id)
-                                        vodPlayback = VodPlayback.Film(
-                                            title = movie.name,
-                                            url = vodViewModel.movieUrl(movie),
-                                            kind = ContentKind.MOVIE,
-                                            id = movie.id,
-                                            progressKey = vodViewModel.progressKeyForMovie(movie.id),
-                                            posterUrl = movie.posterUrl,
-                                            resumeSeconds = progress?.positionSeconds ?: 0,
-                                            headers = buildMap {
-                                                movie.httpUserAgent?.let { put("User-Agent", it) }
-                                                movie.httpReferrer?.let { put("Referer", it) }
-                                            },
+                                        ?: vodViewModel.movieForSearchHit(
+                                            streamId = hit.contentId,
+                                            name = hit.name,
+                                            categoryId = hit.categoryId,
+                                            posterUrl = hit.posterUrl,
                                         )
-                                    }
+                                    searchOpen = false
+                                    destination = TopLevel.MOVIES
+                                    vodViewModel.revealCategory(movie.categoryId)
+                                    vodViewModel.openMovie(movie)
+                                    val progress = library.progress(ContentKind.MOVIE, movie.id)
+                                    vodPlayback = VodPlayback.Film(
+                                        title = movie.name,
+                                        url = vodViewModel.movieUrl(movie),
+                                        kind = ContentKind.MOVIE,
+                                        id = movie.id,
+                                        progressKey = vodViewModel.progressKeyForMovie(movie.id),
+                                        posterUrl = movie.posterUrl,
+                                        resumeSeconds = progress?.positionSeconds ?: 0,
+                                        headers = buildMap {
+                                            movie.httpUserAgent?.let { put("User-Agent", it) }
+                                            movie.httpReferrer?.let { put("Referer", it) }
+                                        },
+                                    )
                                 }
 
                                 else -> {
                                     // A series opens its detail rather than playing: an episode has
                                     // to be picked, and jumping straight into one would guess.
                                     val series = vodViewModel.findSeriesById(hit.contentId)
-                                    if (series != null) {
-                                        searchOpen = false
-                                        destination = TopLevel.SERIES
-                                        vodViewModel.revealCategory(series.categoryId)
-                                        vodViewModel.openSeries(series)
-                                    }
+                                        ?: vodViewModel.seriesForSearchHit(
+                                            seriesId = hit.contentId,
+                                            name = hit.name,
+                                            categoryId = hit.categoryId,
+                                            posterUrl = hit.posterUrl,
+                                        )
+                                    searchOpen = false
+                                    destination = TopLevel.SERIES
+                                    vodViewModel.revealCategory(series.categoryId)
+                                    vodViewModel.openSeries(series)
                                 }
                             }
                         }
@@ -453,9 +486,7 @@ fun AppShell(
                         VodBrowseScreen(
                             state = vodState,
                             section = section,
-                            library = library,
                             onCategoryChange = vodViewModel::selectCategory,
-                            onResumeClick = { progress -> scope.launch { resume(progress) } },
                             onMovieClick = { movie ->
                                 vodViewModel.openMovie(movie)
                                 val progress = library.progress(ContentKind.MOVIE, movie.id)
@@ -492,6 +523,19 @@ fun AppShell(
 }
 
 @Composable
+/**
+ * The app's one persistent row.
+ *
+ * [compact] drops the tabs and the search button, and is used while search is open. Two reasons, and
+ * the second is the real one:
+ *
+ *  - The tabs answer "where am I", which is not a question anyone asks while they are typing a
+ *    search. They are also four arrow-key presses of dead weight above a text field.
+ *  - More importantly, they are the only way focus could leave search by accident, in a bar where
+ *    moving right used to end on something destructive. Inside search the row now holds only Library,
+ *    Sync and Account, and Account takes two presses. Nothing on that row can be reached by accident
+ *    and regretted.
+ */
 private fun TopBar(
     current: TopLevel,
     focusRequester: FocusRequester,
@@ -499,8 +543,27 @@ private fun TopBar(
     onSignOut: () -> Unit,
     onSearch: () -> Unit,
     onSync: () -> Unit,
+    compact: Boolean = false,
 ) {
     val uiScale = LocalUiScale.current
+    var confirmSignOut by remember { mutableStateOf(false) }
+
+    // Signing out asks first, and the safe answer is the one holding focus.
+    //
+    // This is not fussiness. Signing yourself out on a television costs a five-minute recovery with
+    // an on-screen keyboard, and the old layout made it a single press: Sign out was the last button
+    // in a horizontal row, so any run of Right presses ended on it. That was not hypothetical - it
+    // happened twice while testing this app, once of them losing a session mid-test.
+    //
+    // So the button says "Account" rather than lying about what it does, and confirming is a second
+    // deliberate press. "Stay signed in" takes the focus, because on a television the option under the
+    // thumb should be the one that cannot cause damage.
+    //
+    // Deliberately the same row rather than a floating dialog: androidx.tv.material3 1.0.0 ships no
+    // dialog at all, and a separate window brings its own focus behaviour that is awkward to verify
+    // without a real television. A strip in place keeps the D-pad path identical to every other
+    // control in the bar.
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -514,32 +577,51 @@ private fun TopBar(
             color = MaterialTheme.colorScheme.primary,
         )
         Spacer(Modifier.width(10.dp))
+        if (!compact) {
         TopLevel.entries.forEach { entry ->
             Button(
                 onClick = { onSelect(entry) },
-                // Only the active tab carries the requester, so back lands on the tab the viewer is
-                // actually looking at rather than on whichever one happens to be first.
-                modifier = if (entry == current) {
-                    Modifier.focusRequester(focusRequester)
-                } else {
-                    Modifier
-                },
+                // Tabs switch on OK, not on focus.
+                //
+                // This was changed to activate on focus and it had to be changed back, twice over.
+                // Loading on focus is what a television viewer expects and it does feel better, but it
+                // makes every stray focus event a context switch: any moment the content loses focus -
+                // a shelf still loading, a list rebuilding, a recomposition - focus search lands on
+                // whichever tab is nearest and the app silently jumps there. Observed on the real
+                // account: pressing OK on a series category threw the viewer out to Live TV and lost
+                // the shelf they had just chosen, because the chip lost focus during the load and the
+                // focus search found the Live TV tab.
+                //
+                // Before this, the same event moved focus onto a tab and did nothing, which is
+                // harmless. That asymmetry is the whole argument: an extra keypress is a small price,
+                // and being teleported to another section mid-task is not a bug anyone should have to
+                // argue about.
+                modifier = if (entry == current) Modifier.focusRequester(focusRequester) else Modifier,
                 scale = androidx.tv.material3.ButtonDefaults.scale(focusedScale = 1.08f),
             ) {
                 Text(entry.label)
             }
         }
+        }
         Spacer(Modifier.weight(1f))
-        // Sign out lives in the top bar rather than on the Live TV screen. It used to sit in that
-        // screen's own header row, and the D-pad could not reach it from anywhere - up from the
-        // category chips skipped past the header and landed on the "On now" row instead. A control
-        // you can only hit with a pointer is not a control on a television. It also belongs with
-        // the rest of the app's navigation, and it has to work from every tab, not just Live TV.
-        Button(onClick = onSearch) { Text("Search") }
-        Spacer(Modifier.width(10.dp))
+        if (!compact) {
+            Button(onClick = onSearch) { Text("Search") }
+            Spacer(Modifier.width(10.dp))
+        }
         Button(onClick = onSync) { Text("Sync") }
         Spacer(Modifier.width(10.dp))
-        Button(onClick = onSignOut) { Text("Sign out") }
+        if (confirmSignOut) {
+            val stayFocus = remember { FocusRequester() }
+            LaunchedEffect(Unit) { runCatching { stayFocus.requestFocus() } }
+            Button(
+                onClick = { confirmSignOut = false },
+                modifier = Modifier.focusRequester(stayFocus),
+            ) { Text("Stay signed in") }
+            Spacer(Modifier.width(10.dp))
+            Button(onClick = onSignOut) { Text("Sign out") }
+        } else {
+            Button(onClick = { confirmSignOut = true }) { Text("Account") }
+        }
     }
 }
 
