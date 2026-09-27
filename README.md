@@ -94,7 +94,7 @@ sdk.dir=/path/to/Android/sdk
 Then:
 
 ```bash
-./gradlew :app:testFullDebugUnitTest     # 189 unit tests
+./gradlew :app:testFullDebugUnitTest     # 196 unit tests
 ./gradlew :app:assembleFullDebug         # APK with software audio + video fallback (43.2 MB debug)
 ./gradlew :app:assembleLiteDebug         # 20.4 MB, no software decoders
 ```
@@ -128,7 +128,7 @@ stops are duplicated in the script, so change them in both.
 
 ## Testing
 
-The unit tests run on the JVM with no device — 189 on the full flavor, 182 on lite. A few are
+The unit tests run on the JVM with no device — 196 on the full flavor, 189 on lite. A few are
 worth knowing about, because each exists to stop a specific bug from coming back:
 
 - **`SearchIndexingTest`** stands up a mock Xtream panel over a real socket. It covers a shelf that
@@ -229,6 +229,68 @@ that as an indexed shelf would leave it looking like a provider with no films in
 That last measure is the honest limit of the feature. On a panel that truncates as readily as this
 one, some titles cannot be indexed at all, and the sync screen says how many shelves are affected
 rather than reporting a tidy percentage.
+
+### Speaking a search
+
+The **Speak** button next to the field hands the microphone to whichever recogniser the television
+already has, and puts the recognised words into the search box. It takes the initial focus where a
+recogniser exists, so the soft keyboard stays down and the results are not covered on arrival.
+
+**The recogniser belongs to the platform, not to this app.** That is why there is no `RECORD_AUDIO`
+permission and no bundled model: `AudioRecord` into a local model would mean shipping a model,
+holding a runtime permission, and producing a worse result than the one already installed and
+already trained on the viewer's accent. Letting the platform record also means the app never touches
+the microphone at all.
+
+**Where it is unavailable, the button is not shown.** Android TV is not uniform — some images ship a
+recogniser, some do not — and this app cannot install one. A microphone button that appears on a
+device with no recogniser is a control that fails silently, which reads as a broken app rather than
+as a missing feature. The check is `SpeechRecognizer.isRecognitionAvailable`, which needs an
+explicit `<queries>` entry for `android.speech.RecognitionService`: since API 30 an app cannot see
+handlers for an implicit intent otherwise, and without it the answer is `false` on **every** device,
+including ones that work. The failure is silent and looks exactly like "this television has no
+microphone", which is the wrong conclusion and the wrong reason to hide the button.
+
+**What is verified, and what is not.** On the emulator used for development:
+
+- the button appears, takes initial focus, and the keyboard stays down — observed;
+- pressing it starts `android.speech.action.RECOGNIZE_SPEECH` and Google's recogniser dialog opens —
+  observed, `result code=0` in `ActivityTaskManager`;
+- cancelling returns to the search screen with the query untouched and focus back on the button —
+  observed;
+- **the recognised words reaching the field is not observed.** That image reports no
+  `android.hardware.microphone` feature, so the recogniser opens and then waits for audio that never
+  arrives. That last step is covered by `SpokenQueryTest` instead, which is the only way to test it
+  without a microphone.
+
+Two further things are worth knowing before relying on this. The **microphone button on the remote**
+almost certainly does *not* reach this app — Android TV routes it to the system assistant, not to
+whichever app happens to be in the foreground, and no app can intercept that. And the accuracy is
+whatever the installed recogniser gives; a provider whose titles are largely non-English
+transliterations will do better or worse accordingly.
+
+### Back from a search result
+
+Opening a **live channel** from a search result leaves the search open underneath the player, so
+**back returns to the results** with the query and the list exactly as they were.
+
+That is not a small correction. Live TV is sampled by zapping — try one, if it is not what you
+wanted, back out and take the next — and closing search on the way in meant every attempt ended on
+the Live TV grid with the results gone, so trying a second channel cost a whole re-search. Films and
+series still close search, because a film is a two-hour commitment and the shelf it came from is a
+more useful place to land afterwards than a search box. (Series land on their detail screen; films
+land on the shelf, because there is no film detail screen in this app — only
+`DetailTarget.SeriesTarget` is ever rendered.)
+
+Two things had to give for the player to sit above a still-open search: the search screen no longer
+draws while a live channel is playing, and its back handler stands down so back closes the player
+rather than the search. Both ask the same `livePlayerUp` question, which is deliberate — if they
+disagreed, back would close the search while the video was still running.
+
+Fixing this also removed a bug that had been there all along: **the top bar was drawn above live
+video**, contradicting `LiveScreen`'s own comment about playing taking over the whole screen. It
+shrank the picture into whatever was left, and it put Search — and a route to sign out — on screen
+during playback, where a stray press costs the viewer whatever they were watching.
 
 ---
 

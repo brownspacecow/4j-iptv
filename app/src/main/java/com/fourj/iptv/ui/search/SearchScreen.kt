@@ -41,12 +41,20 @@ import com.fourj.iptv.ui.theme.LocalUiScale
  * provider's own app looks broken. Showing what is indexed - and offering to index the rest - is the
  * difference between a tool that is honest about its limits and one that appears faulty.
  *
- * The IME is used for entry rather than an on-screen D-pad keyboard. Worth recording why that is a
- * real trade and not just the easy option: a soft keyboard over the content is unfamiliar on a
+ * **Two ways in, and the choice of which to favour is a real decision.** Voice and the IME are both
+ * offered, and the microphone takes initial focus where the device has a recogniser.
+ *
+ * The IME is used for text entry rather than an on-screen D-pad keyboard. Worth recording why that is
+ * a real trade and not just the easy option: a soft keyboard over the content is unfamiliar on a
  * television, and it competes with focus for the D-pad. In exchange it is the only way to type a
  * twenty-character title comfortably, and a search you can only enter three letters at a time is not
  * worth having. The field intercepts up and down to move focus, so results stay reachable while the
  * keyboard is up.
+ *
+ * Voice is favoured where it exists because asking is what this screen is for - with no server-side
+ * search, a query is the primary way to reach anything in a catalogue this size, and typing a title
+ * across a sofa-length remote is the slow way to do it. The recogniser is the platform's, not ours;
+ * see [VoiceSearchButton] for why that matters.
  */
 @Composable
 fun SearchScreen(
@@ -60,12 +68,29 @@ fun SearchScreen(
 ) {
     val uiScale = LocalUiScale.current
     val queryFocus = remember { FocusRequester() }
+    val voiceFocus = remember { FocusRequester() }
 
-    // Put the caret in the field as the screen appears, so the viewer can type immediately. Without
-    // it, opening search leaves focus on the button that opened it, and the first thing anyone
-    // tries - typing - does nothing.
+    // Asked once per composition of the screen rather than assumed either way. A device with no
+    // recogniser must not be offered a microphone button, and this app cannot install one, so the
+    // honest response is to leave the control out rather than show something inert.
+    val voiceAvailable = rememberVoiceSearchAvailable()
+
+    // Where focus lands when search opens.
+    //
+    // On a device that can listen, the microphone holds focus and the soft keyboard stays down. The
+    // reasoning is about what the screen is *for*, not about preference: this provider has no
+    // server-side search, so asking a question here is the primary way to use the app, and the
+    // keyboard is the slower of the two routes to it. Focusing the field instead raised the keyboard
+    // over the lower half of the results on every single arrival, for a control most people were
+    // about to skip past - and it hid the very results the search had just produced.
+    //
+    // Typing still costs one press (left, to the field), and everything else is unchanged. Where
+    // there is no recogniser the old behaviour stands, because then the keyboard is the only route
+    // to the screen.
     LaunchedEffect(Unit) {
-        runCatching { queryFocus.requestFocus() }
+        runCatching {
+            if (voiceAvailable) voiceFocus.requestFocus() else queryFocus.requestFocus()
+        }
     }
 
     Column(
@@ -75,13 +100,36 @@ fun SearchScreen(
     ) {
         Spacer(Modifier.height(8.dp))
 
-        TvTextField(
-            value = state.query,
-            onValueChange = onQueryChange,
-            label = "Search live TV, films and series",
-            placeholder = "Type a channel, film or series name",
-            focusRequester = queryFocus,
-        )
+        // The microphone sits on the same row as the field, immediately right of it, rather than
+        // out at the far right of a row of its own. Search already has a control that was
+        // unreachable for exactly this reason - a button pushed to the edge of a full-width row is
+        // a long way from a field that spans the screen, and Compose resolves D-pad focus by
+        // proximity, so it got stepped over entirely. Adjacent and on the same line, reading order
+        // and focus order are the same order.
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.Bottom,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            TvTextField(
+                value = state.query,
+                onValueChange = onQueryChange,
+                label = "Search live TV, films and series",
+                placeholder = "Type a channel, film or series name",
+                focusRequester = queryFocus,
+                // The field and the microphone sit side by side, so right at the end of the text
+                // has to mean "next control". Without this the field would swallow it, and the only
+                // way onto the microphone would be down and back up again.
+                movesFocusRightAtEnd = voiceAvailable,
+                modifier = Modifier.weight(1f),
+            )
+            if (voiceAvailable) {
+                VoiceSearchButton(
+                    onResult = onQueryChange,
+                    focusRequester = voiceFocus,
+                )
+            }
+        }
 
         Spacer(Modifier.height(10.dp))
         IndexControls(

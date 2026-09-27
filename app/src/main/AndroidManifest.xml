@@ -19,6 +19,22 @@
         android:name="android.software.picture_in_picture"
         android:required="false" />
 
+    <!--
+      Needed to ask whether this device has a speech recogniser at all.
+
+      Since API 30 an app cannot see handlers for an implicit intent unless it declares the ones it
+      cares about, and without this `SpeechRecognizer.isRecognitionAvailable` returns false on every
+      device - including ones that do have a working recogniser. The failure is silent and looks
+      exactly like "this television has no microphone", which is the wrong conclusion to reach and the
+      wrong reason to hide the voice button. The action is queried rather than the
+      RECOGNIZE_SPEECH activity because `isRecognitionAvailable` asks about the service.
+    -->
+    <queries>
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+    </queries>
+
     <application
         android:name=".FourJApp"
         android:allowBackup="false"

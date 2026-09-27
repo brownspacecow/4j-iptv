@@ -150,6 +150,18 @@ fun AppShell(
 
     val liveState by liveViewModel.state.collectAsStateWithLifecycle()
     val nowNext by liveViewModel.nowNext.collectAsStateWithLifecycle()
+
+    /**
+     * Whether the live player is on screen.
+     *
+     * Read rather than tracked, because the live player's state belongs to [LiveViewModel] and is
+     * surfaced by LiveScreen. Search is now deliberately left open underneath a channel opened from
+     * a search result, so two other things have to know this: the search screen must not be drawn on
+     * top of the video, and its back handler must stand down. They have to ask the same question, or
+     * back would close the search while the player was still up.
+     */
+    val livePlayerUp = liveState.playing != null
+
     val vodState by vodViewModel.state.collectAsStateWithLifecycle()
     val seriesDetail by vodViewModel.seriesDetail.collectAsStateWithLifecycle()
     val library by vodViewModel.library.collectAsStateWithLifecycle()
@@ -194,7 +206,7 @@ fun AppShell(
      * and the first press would appear to do nothing. Search is a layer over the tabs, so back
      * peels off the layer.
      */
-    BackHandler(enabled = searchOpen || syncOpen) {
+    BackHandler(enabled = (searchOpen || syncOpen) && !livePlayerUp) {
         searchOpen = false
         syncOpen = false
         searchViewModel.clearQuery()
@@ -234,7 +246,15 @@ fun AppShell(
         }
     }
 
-    if (searchOpen || syncOpen) {
+    /**
+     * Search, unless a live channel opened from it is playing.
+     *
+     * The player takes priority, which is the whole reason search can stay open underneath it. Live
+     * TV is watched full-screen the way a set-top box does it, and the video is the priority - so this
+     * branch steps aside, the main branch below renders the player instead, and the viewer finds the
+     * same results waiting when they press back.
+     */
+    if ((searchOpen || syncOpen) && !livePlayerUp) {
         Surface(
             modifier = Modifier.fillMaxSize(),
             colors = SurfaceDefaults.colors(containerColor = MaterialTheme.colorScheme.background),
@@ -285,7 +305,13 @@ fun AppShell(
                                         categoryId = hit.categoryId,
                                         iconUrl = hit.iconUrl,
                                     )
-                                    searchOpen = false
+                                    // Search is deliberately left open underneath, unlike the other
+                                    // two kinds. Sampling live channels by zapping is how this gets
+                                    // watched - try one, if it is not what you wanted, back out and
+                                    // take the next result - and closing search meant every attempt
+                                    // ended on the Live TV grid with the results gone, so a second
+                                    // attempt cost a whole re-search. Leaving it open is what makes the
+                                    // results survive the trip.
                                     destination = TopLevel.LIVE
                                     if (cached != null) {
                                         // Only worth doing when there is a grid to agree with. For a
@@ -418,14 +444,23 @@ fun AppShell(
         colors = SurfaceDefaults.colors(containerColor = MaterialTheme.colorScheme.background),
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
-            TopBar(
-                current = destination,
-                focusRequester = tabFocus,
-                onSelect = { destination = it },
-                onSignOut = onSignOut,
-                onSearch = { searchOpen = true },
-                onSync = { syncOpen = true },
-            )
+            // No top bar over live video.
+            //
+            // It was drawn above the player, which contradicted LiveScreen's own comment about
+            // playing taking over the whole screen, and it cost real estate: the video was squeezed
+            // into whatever was left and letterboxed. It also put Search - and a Sign out path one
+            // press further along - on screen during playback, where a stray press costs the viewer
+            // whatever they were watching.
+            if (!livePlayerUp) {
+                TopBar(
+                    current = destination,
+                    focusRequester = tabFocus,
+                    onSelect = { destination = it },
+                    onSignOut = onSignOut,
+                    onSearch = { searchOpen = true },
+                    onSync = { syncOpen = true },
+                )
+            }
 
             // Focus tracking is scoped to the content area, not the whole column: the column also
             // contains the tab bar, and counting the bar's own focus as "in the content" would make
