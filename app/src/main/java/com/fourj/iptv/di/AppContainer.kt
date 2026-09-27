@@ -5,14 +5,18 @@ import androidx.room.Room
 import com.fourj.iptv.data.local.CredentialStore
 import com.fourj.iptv.data.local.FourJDatabase
 import com.fourj.iptv.data.local.MIGRATION_1_2
+import com.fourj.iptv.data.local.PlaceStore
 import com.fourj.iptv.data.local.SearchIndexDatabase
 import com.fourj.iptv.data.local.VOD_MIGRATION_1_2
 import com.fourj.iptv.data.local.VOD_MIGRATION_2_3
 import com.fourj.iptv.data.local.VOD_MIGRATION_3_4
+import com.fourj.iptv.data.local.VOD_MIGRATION_4_5
 import com.fourj.iptv.data.local.VodDatabase
+import com.fourj.iptv.data.remote.PlaceLookup
 import com.fourj.iptv.data.remote.XtreamNetwork
 import com.fourj.iptv.data.repository.EpgRepository
 import com.fourj.iptv.data.repository.LiveRepository
+import com.fourj.iptv.data.repository.PlaceRepository
 import com.fourj.iptv.data.repository.SearchRepository
 import com.fourj.iptv.data.repository.VodRepository
 import com.fourj.iptv.domain.model.ProviderProfile
@@ -30,6 +34,17 @@ class AppContainer(context: Context) {
     private val appContext: Context = context.applicationContext
 
     val credentialStore: CredentialStore by lazy { CredentialStore(appContext) }
+
+    /**
+     * The approximate city, from the public IP address.
+     *
+     * The one repository here that is not per profile and has nothing to do with the provider: it
+     * describes the television rather than the panel, so it is a single instance built straight off
+     * the application context.
+     */
+    val placeRepository: PlaceRepository by lazy {
+        PlaceRepository(store = PlaceStore(appContext), lookup = PlaceLookup())
+    }
 
     private val database: FourJDatabase by lazy {
         Room.databaseBuilder(appContext, FourJDatabase::class.java, DATABASE_NAME)
@@ -58,8 +73,8 @@ class AppContainer(context: Context) {
 
     private val vodDatabase: VodDatabase by lazy {
         Room.databaseBuilder(appContext, VodDatabase::class.java, VOD_DATABASE_NAME)
-            .addMigrations(VOD_MIGRATION_1_2, VOD_MIGRATION_2_3, VOD_MIGRATION_3_4)
-            // Deliberately no fallbackToDestructiveMigration: wiping a viewer's favourites and
+            .addMigrations(VOD_MIGRATION_1_2, VOD_MIGRATION_2_3, VOD_MIGRATION_3_4, VOD_MIGRATION_4_5)
+            // Deliberately no fallbackToDestructiveMigration: wiping a viewer's favorites and
             // continue-watching because a schema changed would be a real loss, not a convenience.
             .build()
     }
@@ -77,7 +92,7 @@ class AppContainer(context: Context) {
      * copies of names the provider already supplied, so it can be deleted and rebuilt whenever the
      * schema changes instead of carrying a migration. That is the whole reason it is not simply
      * another table in the VOD database, where a schema change would have to be migrated around the
-     * viewer's favourites and playback progress.
+     * viewer's favorites and playback progress.
      */
     private val searchDatabase: SearchIndexDatabase by lazy {
         Room.databaseBuilder(appContext, SearchIndexDatabase::class.java, SEARCH_DATABASE_NAME)
