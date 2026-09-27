@@ -82,29 +82,13 @@ fun LiveScreen(
         colors = SurfaceDefaults.colors(containerColor = MaterialTheme.colorScheme.background),
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = uiScale.horizontalMarginDp.dp, vertical = 16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = "Live TV",
-                    style = MaterialTheme.typography.headlineSmall,
-                    color = MaterialTheme.colorScheme.onBackground,
-                )
-                Spacer(Modifier.width(16.dp))
-                Text(
-                    text = profile.baseUrl,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onBackground,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                // No Sign out button here any more. It moved to the app's top bar, where the
-                // D-pad can actually reach it and where it works from every tab.
-            }
-
+            // No heading row here, and no provider address.
+            //
+            // Both are gone so this screen matches Movies and Series, which have gone straight to
+            // their category chips since they were written. "Live TV" in a headline above a tab
+            // already called Live TV said the same thing twice, and the panel's address is not
+            // something a viewer needs on every visit - it is in Account, and it is the first thing
+            // you type when you are signing in.
             LazyRow(
                 modifier = Modifier.fillMaxWidth(),
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(

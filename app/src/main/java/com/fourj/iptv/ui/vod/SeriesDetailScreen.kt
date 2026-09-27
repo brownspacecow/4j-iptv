@@ -13,7 +13,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -44,10 +48,24 @@ fun SeriesDetailScreen(
     detail: SeriesDetailState,
     onSeasonChange: (Int) -> Unit,
     onEpisodeClick: (Episode) -> Unit,
+    isFavorite: Boolean,
+    onToggleFavorite: () -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val uiScale = LocalUiScale.current
+    val backFocus = remember { FocusRequester() }
+
+    // Take focus when the screen appears.
+    //
+    // Opening a detail composes a whole new subtree, and nothing in it holds focus, so Compose
+    // reassigns initial focus to the first focusable thing in the tree - which is in the top bar.
+    // That was survivable when the first control was the Live TV tab, because pressing OK there
+    // re-selected the tab you were already on and did nothing. It stopped being survivable when
+    // Search moved to the front: OK then threw the viewer out of the detail they had just opened
+    // and into the search screen. Landing on Back is the ordinary television answer and is at least
+    // somewhere on the right screen.
+    LaunchedEffect(Unit) { runCatching { backFocus.requestFocus() } }
 
     Surface(
         modifier = modifier.fillMaxSize(),
@@ -60,7 +78,22 @@ fun SeriesDetailScreen(
                     .padding(horizontal = uiScale.horizontalMarginDp.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Button(onClick = onBack) { Text("Back") }
+                Button(
+                    onClick = onBack,
+                    modifier = Modifier.focusRequester(backFocus),
+                ) { Text("Back") }
+                Spacer(Modifier.width(16.dp))
+                // Favorite a series from its own screen, because that is the only place a viewer
+                // decides they want it. The player can favorite the film or episode in front of them
+                // but has no series to offer, so before this a series simply could not be saved -
+                // there was no control anywhere that did it.
+                //
+                // Placed beside Back rather than at the end of the row: it is the second thing
+                // anyone reaching for on this screen, and putting it after a long cast list would
+                // make it something nobody finds.
+                Button(onClick = onToggleFavorite) {
+                    Text(if (isFavorite) "Favorited" else "Favorite")
+                }
                 Spacer(Modifier.width(16.dp))
                 Text(
                     text = detail.series.name,

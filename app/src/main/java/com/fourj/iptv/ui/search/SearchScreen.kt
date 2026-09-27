@@ -42,7 +42,7 @@ import com.fourj.iptv.ui.theme.LocalUiScale
  * difference between a tool that is honest about its limits and one that appears faulty.
  *
  * **Two ways in, and the choice of which to favour is a real decision.** Voice and the IME are both
- * offered, and the microphone takes initial focus where the device has a recogniser.
+ * offered, and the microphone takes initial focus where the device has a recognizer.
  *
  * The IME is used for text entry rather than an on-screen D-pad keyboard. Worth recording why that is
  * a real trade and not just the easy option: a soft keyboard over the content is unfamiliar on a
@@ -52,8 +52,8 @@ import com.fourj.iptv.ui.theme.LocalUiScale
  * keyboard is up.
  *
  * Voice is favoured where it exists because asking is what this screen is for - with no server-side
- * search, a query is the primary way to reach anything in a catalogue this size, and typing a title
- * across a sofa-length remote is the slow way to do it. The recogniser is the platform's, not ours;
+ * search, a query is the primary way to reach anything in a catalog this size, and typing a title
+ * across a sofa-length remote is the slow way to do it. The recognizer is the platform's, not ours;
  * see [VoiceSearchButton] for why that matters.
  */
 @Composable
@@ -71,7 +71,7 @@ fun SearchScreen(
     val voiceFocus = remember { FocusRequester() }
 
     // Asked once per composition of the screen rather than assumed either way. A device with no
-    // recogniser must not be offered a microphone button, and this app cannot install one, so the
+    // recognizer must not be offered a microphone button, and this app cannot install one, so the
     // honest response is to leave the control out rather than show something inert.
     val voiceAvailable = rememberVoiceSearchAvailable()
 
@@ -85,7 +85,7 @@ fun SearchScreen(
     // about to skip past - and it hid the very results the search had just produced.
     //
     // Typing still costs one press (left, to the field), and everything else is unchanged. Where
-    // there is no recogniser the old behaviour stands, because then the keyboard is the only route
+    // there is no recognizer the old behavior stands, because then the keyboard is the only route
     // to the screen.
     LaunchedEffect(Unit) {
         runCatching {

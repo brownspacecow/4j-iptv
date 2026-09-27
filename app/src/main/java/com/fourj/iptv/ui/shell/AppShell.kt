@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -46,6 +48,8 @@ import com.fourj.iptv.di.AppContainer
 import com.fourj.iptv.domain.model.ContentKind
 import com.fourj.iptv.domain.model.PlaybackProgress
 import com.fourj.iptv.domain.model.ProviderProfile
+import com.fourj.iptv.data.repository.PlaceState
+
 import com.fourj.iptv.ui.epg.NowNextRow
 import com.fourj.iptv.ui.live.LiveScreen
 import com.fourj.iptv.ui.live.LiveViewModel
@@ -54,12 +58,14 @@ import com.fourj.iptv.ui.search.SearchViewModel
 import com.fourj.iptv.ui.search.SyncScreen
 import com.fourj.iptv.ui.theme.LocalUiScale
 import com.fourj.iptv.ui.vod.formatDuration
+import com.fourj.iptv.domain.model.Favorite
 import com.fourj.iptv.ui.vod.DetailTarget
 import com.fourj.iptv.ui.vod.SeriesDetailScreen
 import com.fourj.iptv.ui.vod.VodBrowseScreen
 import com.fourj.iptv.ui.vod.VodPlayerScreen
 import com.fourj.iptv.ui.vod.VodSection
 import kotlinx.coroutines.launch
+import com.fourj.iptv.ui.vod.FavoriteTarget
 import com.fourj.iptv.ui.vod.Resumable
 import com.fourj.iptv.ui.vod.VodViewModel
 
@@ -162,6 +168,30 @@ fun AppShell(
      */
     val livePlayerUp = liveState.playing != null
 
+    /**
+     * Put focus on the current tab when a browse screen appears, rather than letting it land
+     * wherever Compose decides.
+     *
+     * This is a fix for putting Search first in the bar, and it is worth recording because the
+     * symptom looked like nothing at all. Compose gives initial focus to the first focusable thing
+     * in the tree, which used to be the Live TV tab - so arriving on a browse screen put focus on
+     * the tab you were already on, and nothing had to be done about it. Search is now first, so
+     * arriving there put focus on Search instead, and a viewer who pressed OK out of habit or
+     * rolled their thumb was taken straight back to the search screen they had just closed.
+     *
+     * Keyed on the overlay flags rather than on [destination] deliberately: this should only fire
+     * on the transition *into* the browse screens. Keying it on the tab would pull focus out of the
+     * content every time someone chose a different one, and the content is where the D-pad belongs
+     * once you are in it.
+     */
+    LaunchedEffect(searchOpen, syncOpen) {
+        if (!searchOpen && !syncOpen) {
+            // runCatching because the bar may not have composed its tabs yet, and a FocusRequester
+            // that is not attached throws rather than quietly doing nothing.
+            runCatching { tabFocus.requestFocus() }
+        }
+    }
+
     val vodState by vodViewModel.state.collectAsStateWithLifecycle()
     val seriesDetail by vodViewModel.seriesDetail.collectAsStateWithLifecycle()
     val library by vodViewModel.library.collectAsStateWithLifecycle()
@@ -171,6 +201,20 @@ fun AppShell(
         factory = SearchViewModel.factory(container, profile),
     )
     val searchState by searchViewModel.state.collectAsStateWithLifecycle()
+
+    /**
+     * The approximate city, and the one request that goes to a server the app was not configured
+     * with. See [com.fourj.iptv.data.remote.PlaceLookup] for what that discloses.
+     *
+     * Kicked off here rather than in a composable so it happens once per process rather than once
+     * per composition, and it returns immediately - a cached city is already in the flow, so the
+     * screen has something to draw on its first frame and never waits on the network. Every launch does
+     * send a request; see [PlaceRepository] for why that is the right trade here and the wrong one for
+     * anything metered.
+     */
+    val placeRepository = container.placeRepository
+    val placeState by placeRepository.state.collectAsStateWithLifecycle()
+    LaunchedEffect(Unit) { placeRepository.refresh() }
 
     /**
      * Back returns to the tab bar before it changes tabs, and only leaves from Live TV.
@@ -254,6 +298,56 @@ fun AppShell(
      * branch steps aside, the main branch below renders the player instead, and the viewer finds the
      * same results waiting when they press back.
      */
+    /**
+     * Open a favorites row.
+     *
+     * A film or an episode plays. A series opens its detail rather than playing, because a favorite
+     * series is a favorite list of episodes and picking one would be a guess - the same reasoning
+     * as a series arriving from search.
+     *
+     * Null when the thing is no longer available. Nothing happens in that case, deliberately: a
+     * bookmark to something the provider has withdrawn should be a dead row the viewer can see and
+     * remove, not a player that opens on an empty url and reports a decode error they can do nothing
+     * about.
+     */
+    suspend fun openFavorite(favorite: Favorite) {
+        when (val target = vodViewModel.resolveFavorite(favorite)) {
+            is FavoriteTarget.FilmItem -> {
+                destination = TopLevel.MOVIES
+                vodPlayback = VodPlayback.Film(
+                    title = target.movie.name,
+                    url = target.url,
+                    kind = ContentKind.MOVIE,
+                    id = target.movie.id,
+                    progressKey = vodViewModel.progressKeyForMovie(target.movie.id),
+                    posterUrl = target.movie.posterUrl,
+                    resumeSeconds = target.resumeSeconds,
+                    headers = emptyMap(),
+                )
+            }
+
+            is FavoriteTarget.EpisodeItem -> {
+                destination = TopLevel.SERIES
+                vodPlayback = VodPlayback.EpisodePlayback(
+                    title = target.episode.title,
+                    subtitle = favorite.subtitle,
+                    url = target.url,
+                    progressKey = favorite.contentKey,
+                    posterUrl = favorite.posterUrl,
+                    resumeSeconds = target.resumeSeconds,
+                )
+            }
+
+            is FavoriteTarget.SeriesItem -> {
+                destination = TopLevel.SERIES
+                vodViewModel.revealCategory(target.series.categoryId)
+                vodViewModel.openSeries(target.series)
+            }
+
+            null -> Unit
+        }
+    }
+
     if ((searchOpen || syncOpen) && !livePlayerUp) {
         Surface(
             modifier = Modifier.fillMaxSize(),
@@ -261,7 +355,12 @@ fun AppShell(
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
                 TopBar(
-                    current = TopLevel.LIVE,
+                    // No tab is current while searching. The old code passed LIVE here, which lit
+                    // "Live TV" up behind a search screen and claimed the viewer was somewhere they
+                    // were not.
+                    current = null,
+                    searchActive = true,
+                    place = placeState,
                     focusRequester = tabFocus,
                     onSelect = {
                         searchOpen = false
@@ -271,9 +370,6 @@ fun AppShell(
                     onSignOut = onSignOut,
                     onSearch = { searchOpen = true; syncOpen = false },
                     onSync = { syncOpen = true; searchOpen = false },
-                    // No tabs while searching: the viewer is typing a question, not asking where they
-                    // are, and the row is the only thing focus can escape into.
-                    compact = true,
                 )
                 if (syncOpen) {
                     SyncScreen(
@@ -393,9 +489,9 @@ fun AppShell(
                 posterUrl = current.posterUrl,
                 resumePositionSeconds = current.resumeSeconds,
                 requestHeaders = current.headers,
-                isFavourite = library.isFavourite(current.kind, current.id),
-                onToggleFavourite = {
-                    vodViewModel.toggleFavourite(
+                isFavorite = library.isFavorite(current.kind, current.id),
+                onToggleFavorite = {
+                    vodViewModel.toggleFavorite(
                         kind = current.kind,
                         id = current.id,
                         name = current.title,
@@ -423,9 +519,9 @@ fun AppShell(
                 posterUrl = current.posterUrl,
                 resumePositionSeconds = current.resumeSeconds,
                 requestHeaders = emptyMap(),
-                isFavourite = library.isFavouriteByKey(current.progressKey),
-                onToggleFavourite = {
-                    vodViewModel.toggleFavouriteByKey(
+                isFavorite = library.isFavoriteByKey(current.progressKey),
+                onToggleFavorite = {
+                    vodViewModel.toggleFavoriteByKey(
                         contentKey = current.progressKey,
                         name = current.title,
                         subtitle = current.subtitle,
@@ -454,6 +550,8 @@ fun AppShell(
             if (!livePlayerUp) {
                 TopBar(
                     current = destination,
+                    searchActive = false,
+                    place = placeState,
                     focusRequester = tabFocus,
                     onSelect = { destination = it },
                     onSignOut = onSignOut,
@@ -510,6 +608,19 @@ fun AppShell(
                                         )
                                     }
                                 },
+                                isFavorite = library.isFavorite(
+                                    ContentKind.SERIES,
+                                    seriesState.series.id,
+                                ),
+                                onToggleFavorite = {
+                                    vodViewModel.toggleFavorite(
+                                        kind = ContentKind.SERIES,
+                                        id = seriesState.series.id,
+                                        name = seriesState.series.name,
+                                        subtitle = null,
+                                        posterUrl = seriesState.series.posterUrl,
+                                    )
+                                },
                                 onBack = vodViewModel::closeDetail,
                             )
                         }
@@ -550,6 +661,7 @@ fun AppShell(
                 TopLevel.LIBRARY -> LibraryScreen(
                     state = library,
                     onContinueClick = { progress -> scope.launch { resume(progress) } },
+                    onFavoriteClick = { favorite -> scope.launch { openFavorite(favorite) } },
                 )
                 }
             }
@@ -561,24 +673,28 @@ fun AppShell(
 /**
  * The app's one persistent row.
  *
- * [compact] drops the tabs and the search button, and is used while search is open. Two reasons, and
- * the second is the real one:
+ * The bar is the same on every screen, search included. It used to drop the tabs while search was
+ * open, on the reasoning that a person typing a question is not asking where they are — which is
+ * true and does not justify a different interface. It made search the one screen whose chrome did
+ * not match, and it is the screen the app opens on, so it was the first thing anyone saw.
  *
- *  - The tabs answer "where am I", which is not a question anyone asks while they are typing a
- *    search. They are also four arrow-key presses of dead weight above a text field.
- *  - More importantly, they are the only way focus could leave search by accident, in a bar where
- *    moving right used to end on something destructive. Inside search the row now holds only Library,
- *    Sync and Account, and Account takes two presses. Nothing on that row can be reached by accident
- *    and regretted.
+ * Search is a peer of the tabs rather than a separate control, and it comes first: it is the primary
+ * action and this is the first screen, so making it the fifth button in the row made the thing most
+ * people came to do the last thing they could reach.
+ *
+ * The row is still built so that nothing on it can be reached by accident and regretted — Account
+ * takes two presses, and the safe answer is the one holding focus. See the comment on the sign-out
+ * strip below.
  */
 private fun TopBar(
-    current: TopLevel,
+    current: TopLevel?,
+    searchActive: Boolean,
+    place: PlaceState,
     focusRequester: FocusRequester,
     onSelect: (TopLevel) -> Unit,
     onSignOut: () -> Unit,
     onSearch: () -> Unit,
     onSync: () -> Unit,
-    compact: Boolean = false,
 ) {
     val uiScale = LocalUiScale.current
     var confirmSignOut by remember { mutableStateOf(false) }
@@ -595,7 +711,7 @@ private fun TopBar(
     // thumb should be the one that cannot cause damage.
     //
     // Deliberately the same row rather than a floating dialog: androidx.tv.material3 1.0.0 ships no
-    // dialog at all, and a separate window brings its own focus behaviour that is awkward to verify
+    // dialog at all, and a separate window brings its own focus behavior that is awkward to verify
     // without a real television. A strip in place keeps the D-pad path identical to every other
     // control in the bar.
 
@@ -611,8 +727,47 @@ private fun TopBar(
             style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.primary,
         )
+        // The city, immediately after the wordmark and as small as this type system goes.
+        //
+        // It used to sit on the search screen, which meant it was invisible everywhere else and cost
+        // a whole row of vertical space on the one screen where the results need the room. Beside
+        // the app's own name it reads as part of the chrome rather than as content, and labelSmall
+        // is deliberately two steps below the wordmark so it cannot compete with it.
+        place.place?.let { city ->
+            Spacer(Modifier.width(10.dp))
+            Text(
+                text = city.shortLabel,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                // Bounded so a long place name cannot push the tabs along the row. The bar is a
+                // fixed set of controls and a long city is the only thing here that can grow.
+                modifier = Modifier.widthIn(max = 150.dp),
+            )
+        }
         Spacer(Modifier.width(10.dp))
-        if (!compact) {
+
+        // Search first, before the tabs.
+        //
+        // It is the app's primary action and this is the first screen it opens on, so putting it
+        // after four tabs made the thing most people came to do the fifth thing in the row. It is a
+        // peer of the tabs rather than a separate control now, which is also why it is highlighted
+        // while search is open rather than leaving "Live TV" lit up behind a search screen.
+        Button(
+            onClick = onSearch,
+            scale = androidx.tv.material3.ButtonDefaults.scale(focusedScale = 1.08f),
+            colors = if (searchActive) {
+                androidx.tv.material3.ButtonDefaults.colors(
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                )
+            } else {
+                androidx.tv.material3.ButtonDefaults.colors()
+            },
+        ) { Text("Search") }
+        Spacer(Modifier.width(10.dp))
+
         TopLevel.entries.forEach { entry ->
             Button(
                 onClick = { onSelect(entry) },
@@ -631,18 +786,20 @@ private fun TopBar(
                 // harmless. That asymmetry is the whole argument: an extra keypress is a small price,
                 // and being teleported to another section mid-task is not a bug anyone should have to
                 // argue about.
-                modifier = if (entry == current) Modifier.focusRequester(focusRequester) else Modifier,
+                // The tab bar is unreachable once focus descends into content, so the FocusRequester
+                // goes on whichever tab is current - and on no tab at all while search is open, where
+                // `current` is null and back has nothing to pull focus back to.
+                modifier = if (entry == current) {
+                    Modifier.focusRequester(focusRequester)
+                } else {
+                    Modifier
+                },
                 scale = androidx.tv.material3.ButtonDefaults.scale(focusedScale = 1.08f),
             ) {
                 Text(entry.label)
             }
         }
-        }
         Spacer(Modifier.weight(1f))
-        if (!compact) {
-            Button(onClick = onSearch) { Text("Search") }
-            Spacer(Modifier.width(10.dp))
-        }
         Button(onClick = onSync) { Text("Sync") }
         Spacer(Modifier.width(10.dp))
         if (confirmSignOut) {
@@ -664,6 +821,7 @@ private fun TopBar(
 private fun LibraryScreen(
     state: com.fourj.iptv.ui.vod.LibraryState,
     onContinueClick: (PlaybackProgress) -> Unit,
+    onFavoriteClick: (Favorite) -> Unit,
 ) {
     val uiScale = LocalUiScale.current
     Column(
@@ -729,29 +887,34 @@ private fun LibraryScreen(
 
         Spacer(Modifier.height(24.dp))
         Text(
-            text = "Favourites",
+            text = "Favorites",
             style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.onBackground,
         )
         Spacer(Modifier.height(10.dp))
-        if (state.favourites.isEmpty()) {
+        if (state.favorites.isEmpty()) {
             Text(
-                text = "No favourites yet.",
+                text = "No favorites yet.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onBackground,
             )
         } else {
             LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                items(count = state.favourites.size, key = { index ->
-                    state.favourites[index].contentKey
+                items(count = state.favorites.size, key = { index ->
+                    state.favorites[index].contentKey
                 }) { index ->
-                    val favourite = state.favourites[index]
+                    val favorite = state.favorites[index]
                     Card(
-                        onClick = { },
+                        // This did nothing at all. A favorites row that cannot be opened is a
+                        // bookmark to nowhere, and it read as broken rather than as unfinished: the
+                        // card focused, scaled and looked exactly like every other playable card in
+                        // the app, so pressing it doing nothing was indistinguishable from a bug.
+                        onClick = { onFavoriteClick(favorite) },
                         modifier = Modifier.width(230.dp),
+                        scale = CardDefaults.scale(focusedScale = 1.05f),
                     ) {
                         Column(modifier = Modifier.padding(12.dp)) {
-                            favourite.posterUrl?.let { poster ->
+                            favorite.posterUrl?.let { poster ->
                                 AsyncImage(
                                     model = poster,
                                     contentDescription = null,
@@ -765,12 +928,28 @@ private fun LibraryScreen(
                                 Spacer(Modifier.height(8.dp))
                             }
                             Text(
-                                text = favourite.name,
+                                text = favorite.name,
                                 style = MaterialTheme.typography.labelLarge,
                                 color = MaterialTheme.colorScheme.onSurface,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
+                            // The subtitle is what tells an episode apart from its own series.
+                            //
+                            // Both are favoritable, both carry the same poster, and an episode's
+                            // name begins with the series name - so a card showing only the name
+                            // truncates to the same string twice and the two rows are
+                            // indistinguishable. The subtitle is the series, which is exactly the
+                            // thing being left out.
+                            favorite.subtitle?.let { subtitle ->
+                                Text(
+                                    text = subtitle,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
                         }
                     }
                 }

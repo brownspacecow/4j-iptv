@@ -10,7 +10,7 @@ Live TV with a programme guide, plus films and series with resume, and search ac
 
 | | |
 |---|---|
-| Features | Live TV, EPG, films, series, search, manual sync, continue watching, favourites |
+| Features | Live TV, EPG, films, series, search, manual sync, continue watching, favorites |
 | Builds | `assembleFullDebug`, `assembleLiteDebug` |
 | Tests | 175 unit tests, all passing |
 | Verified on hardware | **No** — see [Honest limitations](#honest-limitations) |
@@ -36,7 +36,7 @@ Live TV with a programme guide, plus films and series with resume, and search ac
 - **Seek and resume.** Left and right scrub; position is saved every few seconds and again on back,
   so a crash or a power cut costs seconds rather than the film. "Continue watching" picks up where
   you left off.
-- **Favourites**, kept per account and per content type.
+- **Favorites**, kept per account and per content type.
 
 **Search**
 
@@ -57,7 +57,7 @@ Live TV with a programme guide, plus films and series with resume, and search ac
 
 - **Panel-required headers** (`User-Agent`, `Referer`) are forwarded to the player. A noticeable
   share of channels answer `403` without them.
-- **Cached catalogues.** Categories and contents load once, then come from a local Room database, so
+- **Cached catalogs.** Categories and contents load once, then come from a local Room database, so
   browsing is instant and survives a provider outage. See
   [How caching works, and why there is no timer](#how-caching-works-and-why-there-is-no-timer).
 - **Encrypted credentials.** AES-256-GCM under a non-exportable Android Keystore key. App backup is
@@ -94,7 +94,7 @@ sdk.dir=/path/to/Android/sdk
 Then:
 
 ```bash
-./gradlew :app:testFullDebugUnitTest     # 196 unit tests
+./gradlew :app:testFullDebugUnitTest     # 208 unit tests
 ./gradlew :app:assembleFullDebug         # APK with software audio + video fallback (43.2 MB debug)
 ./gradlew :app:assembleLiteDebug         # 20.4 MB, no software decoders
 ```
@@ -128,7 +128,7 @@ stops are duplicated in the script, so change them in both.
 
 ## Testing
 
-The unit tests run on the JVM with no device — 196 on the full flavor, 189 on lite. A few are
+The unit tests run on the JVM with no device — 208 on the full flavor, 201 on lite. A few are
 worth knowing about, because each exists to stop a specific bug from coming back:
 
 - **`SearchIndexingTest`** stands up a mock Xtream panel over a real socket. It covers a shelf that
@@ -139,7 +139,7 @@ worth knowing about, because each exists to stop a specific bug from coming back
   implementation gets wrong: a brace inside a title, an escaped quote, a cut landing mid-string, a
   trailing comma.
 - **`SearchCoverageTest` and `SyncProgressTest`** pin the numbers on screen. Every one of them is a
-  claim about what the app knows, and "everything is synced" when a third of the catalogue was never
+  claim about what the app knows, and "everything is synced" when a third of the catalog was never
   read is a falsehood told with total confidence.
 - **`VodCachingTest`** asserts a shelf is downloaded once and that a deliberate refresh really does
   re-fetch. With a panel that answers a film shelf in about 20 MB, "re-fetched on every visit" is the
@@ -182,7 +182,7 @@ allows.
 Every server-side search action was tried against the provider this was built against:
 `search_streams`, `search`, `search_vod`, `search_movies`, `search_movie` and `search_series` are
 **all ignored**, each answered with a login object. Passing `search` to `get_vod_streams` or
-`get_series` is worse than useless — the parameter is ignored and the entire catalogue comes back,
+`get_series` is worse than useless — the parameter is ignored and the entire catalog comes back,
 large enough to have the app killed for memory while buffering it. There is no server-side search to
 call.
 
@@ -207,7 +207,7 @@ Three things feed the index, in increasing order of effort:
 
 Shelves are walked one at a time rather than paged, and the reason is worth stating: the `limit` and
 `start` parameters are [ignored by this panel](#how-caching-works-and-why-there-is-no-timer), so there
-is no smaller slice to ask for. The indexer sends them anyway, for panels that do honour them, and
+is no smaller slice to ask for. The indexer sends them anyway, for panels that do honor them, and
 stops when a panel proves otherwise by handing back the same first row twice.
 
 **A shelf that cannot be read is skipped, not fatal.** This provider truncates large responses
@@ -232,19 +232,19 @@ rather than reporting a tidy percentage.
 
 ### Speaking a search
 
-The **Speak** button next to the field hands the microphone to whichever recogniser the television
-already has, and puts the recognised words into the search box. It takes the initial focus where a
-recogniser exists, so the soft keyboard stays down and the results are not covered on arrival.
+The **Speak** button next to the field hands the microphone to whichever recognizer the television
+already has, and puts the recognized words into the search box. It takes the initial focus where a
+recognizer exists, so the soft keyboard stays down and the results are not covered on arrival.
 
-**The recogniser belongs to the platform, not to this app.** That is why there is no `RECORD_AUDIO`
+**The recognizer belongs to the platform, not to this app.** That is why there is no `RECORD_AUDIO`
 permission and no bundled model: `AudioRecord` into a local model would mean shipping a model,
 holding a runtime permission, and producing a worse result than the one already installed and
 already trained on the viewer's accent. Letting the platform record also means the app never touches
 the microphone at all.
 
 **Where it is unavailable, the button is not shown.** Android TV is not uniform — some images ship a
-recogniser, some do not — and this app cannot install one. A microphone button that appears on a
-device with no recogniser is a control that fails silently, which reads as a broken app rather than
+recognizer, some do not — and this app cannot install one. A microphone button that appears on a
+device with no recognizer is a control that fails silently, which reads as a broken app rather than
 as a missing feature. The check is `SpeechRecognizer.isRecognitionAvailable`, which needs an
 explicit `<queries>` entry for `android.speech.RecognitionService`: since API 30 an app cannot see
 handlers for an implicit intent otherwise, and without it the answer is `false` on **every** device,
@@ -254,19 +254,19 @@ microphone", which is the wrong conclusion and the wrong reason to hide the butt
 **What is verified, and what is not.** On the emulator used for development:
 
 - the button appears, takes initial focus, and the keyboard stays down — observed;
-- pressing it starts `android.speech.action.RECOGNIZE_SPEECH` and Google's recogniser dialog opens —
+- pressing it starts `android.speech.action.RECOGNIZE_SPEECH` and Google's recognizer dialog opens —
   observed, `result code=0` in `ActivityTaskManager`;
 - cancelling returns to the search screen with the query untouched and focus back on the button —
   observed;
-- **the recognised words reaching the field is not observed.** That image reports no
-  `android.hardware.microphone` feature, so the recogniser opens and then waits for audio that never
+- **the recognized words reaching the field is not observed.** That image reports no
+  `android.hardware.microphone` feature, so the recognizer opens and then waits for audio that never
   arrives. That last step is covered by `SpokenQueryTest` instead, which is the only way to test it
   without a microphone.
 
 Two further things are worth knowing before relying on this. The **microphone button on the remote**
 almost certainly does *not* reach this app — Android TV routes it to the system assistant, not to
 whichever app happens to be in the foreground, and no app can intercept that. And the accuracy is
-whatever the installed recogniser gives; a provider whose titles are largely non-English
+whatever the installed recognizer gives; a provider whose titles are largely non-English
 transliterations will do better or worse accordingly.
 
 ### Back from a search result
@@ -292,6 +292,70 @@ video**, contradicting `LiveScreen`'s own comment about playing taking over the 
 shrank the picture into whatever was left, and it put Search — and a route to sign out — on screen
 during playback, where a stray press costs the viewer whatever they were watching.
 
+### Typing needs a deliberate press
+
+**Focusing a text field does not open the keyboard. Pressing OK on it does.**
+
+The platform default is the other way round: a focused text field summons the keyboard by itself, so
+merely arrowing onto the search box used to throw up a keyboard over half the screen. On a
+television that is the wrong default, because arrowing is how you *look* at something — every other
+control in this app changes what is selected the moment focus lands on it, and none of them hide
+half the screen when you do.
+
+The keyboard appears on the press that asked for it, and a small **OK to type** hint sits on the
+field's label line while the field is focused and closed, so the affordance is visible rather than
+discovered. Typing is now two presses from the search screen — Left to the field, then OK — or one
+press from anywhere the field is not, and **Back closes the keyboard without leaving the screen**, so
+a half-typed title is never lost to a stray press.
+
+This is `TvTextField`, so it is the same rule in every field in the app. The login screen's three
+fields behave identically and deliberately: a viewer who learns that OK opens the keyboard learns it
+once, and a field that behaved differently depending on the screen would be worse than either choice
+made consistently.
+
+**One consequence worth knowing:** the keyboard's own Next and Done actions move focus and close the
+keyboard, so the next field needs its own OK. That is the same rule rather than a special case, but
+it does mean the login form takes one press per field.
+
+---
+
+### The city in the corner
+
+The search screen shows the approximate city the television appears to be in, from its public IP
+address. It is the only thing in the app that contacts a server you have not configured, and it is
+worth being plain about what that costs.
+
+**Your television's public IP address is sent to `ipwho.is`,** and the answer identifies the
+household to roughly city accuracy. There is no way to derive a city from an IP address without
+sending the IP somewhere, and the alternatives are worse: `Geocoder` needs a runtime location
+permission and a GPS fix, which a television in a living room does not have, and inferring it from
+the provider's EPG would be a guess dressed up as a lookup. The service was chosen for what it does
+*not* need — HTTPS, no API key, no account, nothing to leak and no key sitting in the APK to be
+lifted out of it.
+
+**Checked on every launch, and the cached city is never waited on.** Each time the app opens it
+sends one request; the previously cached city is on screen from the first frame and is replaced only
+if the new answer arrives, so opening the app never shows an empty corner waiting on a network. That
+is what makes a lookup per launch affordable.
+
+There is no cache window, and that is a deliberate trade rather than an oversight. The alternative
+— a day-old answer that is wrong because the household moved — seemed worse than one extra small
+request on a single television. It is the wrong trade for anything metered or shared, which is why
+it is worth stating plainly rather than burying. The age is kept and shown next to the city anyway,
+because a request can fail and the last good answer stays on screen; the age is what tells the viewer
+it came from last week rather than from this launch. An IP-derived city is always a guess, and a
+guess that says how old it is is honest.
+
+**It really is only a guess.** On the development machine the same app reported Kansas City,
+Missouri and then Washington, District of Columbia twenty minutes later, because the host's egress
+address had moved. The lookup is as good as the address it is given.
+
+**A failure draws nothing.** A television behind a VPN, on a reserved address range, or simply offline
+cannot be geolocated, and an error message about a cosmetic detail would be worse than showing
+nothing. This is the normal path for some viewers, not an edge case.
+
+Nothing about it identifies you to the *provider*; that server is never contacted for this.
+
 ---
 
 ## How caching works, and why there is no timer
@@ -304,7 +368,7 @@ directly against it:
 
 - `get_vod_categories`, `get_vod_streams`, `get_series` and `get_live_streams` all return
   **no `ETag` and no `Last-Modified`**, so a conditional request cannot come back `304`.
-- Passing `search` to `get_vod_streams` or `get_series` is **ignored** — the whole catalogue comes
+- Passing `search` to `get_vod_streams` or `get_series` is **ignored** — the whole catalog comes
   back, which is why search is [local](#search-and-why-it-is-local).
 - `limit` and `start` are **ignored too**, per category: `limit=5&start=0`, `start=5` and `start=500`
   all return byte-identical rows. A shelf cannot be asked for a smaller slice.
@@ -364,7 +428,7 @@ the app for pressing back once too many is not acceptable on a television.
 Keystore after the provider has accepted them.
 
 **Database changes are never destructive.** `fallbackToDestructiveMigration` is deliberately not
-enabled: wiping favourites and continue-watching because a schema changed would be a real loss. The
+enabled: wiping favorites and continue-watching because a schema changed would be a real loss. The
 category cache is disposable and is rebuilt; the viewer's own data is migrated.
 
 **Cleartext HTTP is permitted.** Many panels are only reachable over plain HTTP, and refusing it
@@ -374,7 +438,7 @@ Use HTTPS where your provider offers it.
 
 **`tv-material` supplies no `TextField`.** As of `androidx.tv:tv-material` 1.0.0 the library has
 buttons, cards, surfaces and lists, but no text input, so `TvTextField` is built on Compose's
-`BasicTextField` and styled for focus visibility at three metres. Up and down move focus rather than
+`BasicTextField` and styled for focus visibility at three meters. Up and down move focus rather than
 the caret, or a single-line field would trap focus inside itself; right only moves on at the end of
 the text, so a viewer can still reach a field that sits to the right of another.
 
@@ -388,7 +452,7 @@ D-pad directions that channel zapping needs. The VOD player draws its own overla
 
 ## Roadmap
 
-Done: EPG, favourites, continue watching, films and series, software HEVC fallback, search with a
+Done: EPG, favorites, continue watching, films and series, software HEVC fallback, search with a
 manual sync, and per-shelf caching with deliberate refresh. Still to do, most valuable first:
 
 1. **Quality-variant merging and adaptive quality.** Collapsing a channel's `1`/`2`/`3`/4K/FHD/HD/SD
@@ -406,7 +470,7 @@ manual sync, and per-shelf caching with deliberate refresh. Still to do, most va
 
 - **Nothing has been run on a real television yet.** Everything claimed above was verified on an
   emulator against a mock panel and against a real provider, but no one has pressed a physical
-  remote against it. D-pad focus behaviour in particular is the thing most likely to need
+  remote against it. D-pad focus behavior in particular is the thing most likely to need
   adjustment once it is on real hardware.
 - **The programme guide is unconfirmed against the real provider.** It is implemented, tested
   against a mock panel, and rendered correctly earlier in the project. But during the most recent
@@ -440,7 +504,13 @@ This project bundles FFmpeg-derived software decoders via NextLib. FFmpeg is lic
 LGPLv3; NextLib is GPL-3.0. Full attribution for FFmpeg, libvpx, Mbed TLS and the rest of the stack is
 in [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
 
-## Licence
+The app also contacts **[ipwho.is](https://ipwho.is)** (`https://ipwho.is/`, operated by IPWhoIs)
+to resolve the public IP address of the device to an approximate city, once each time the app
+is launched. No API key is used and no data is bundled. The request discloses the device's
+public IP address to that service on every launch, whether or not the answer can have changed -
+see [The city in the corner](#the-city-in-the-corner).
+
+## License
 
 [GPL-3.0](LICENSE).
 
@@ -449,3 +519,7 @@ in [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
 4J TV is a player. It ships with no channels, playlists, subscriptions or provider directory, and it
 is not affiliated with any IPTV provider. You are responsible for ensuring you are authorised to
 access whatever you configure it with.
+
+The app sends your public IP address to a third-party geolocation service to display an approximate
+city. That is the only outbound request it makes to a server you have not configured. It is described
+in full under [The city in the corner](#the-city-in-the-corner).

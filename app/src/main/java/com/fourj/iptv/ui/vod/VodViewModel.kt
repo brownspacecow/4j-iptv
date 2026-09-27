@@ -13,7 +13,7 @@ import com.fourj.iptv.data.repository.episodeContentKey
 import com.fourj.iptv.di.AppContainer
 import com.fourj.iptv.domain.model.ContentKind
 import com.fourj.iptv.domain.model.Episode
-import com.fourj.iptv.domain.model.Favourite
+import com.fourj.iptv.domain.model.Favorite
 import com.fourj.iptv.domain.model.Movie
 import com.fourj.iptv.domain.model.PlaybackProgress
 import com.fourj.iptv.domain.model.ProviderProfile
@@ -91,23 +91,36 @@ data class SeriesDetailState(
 
 data class LibraryState(
     val continueWatching: List<PlaybackProgress> = emptyList(),
-    val favourites: List<Favourite> = emptyList(),
+    val favorites: List<Favorite> = emptyList(),
 ) {
-    fun isFavourite(kind: ContentKind, id: Int): Boolean =
-        favourites.any { it.kind == kind && it.contentId == id }
+    fun isFavorite(kind: ContentKind, id: Int): Boolean =
+        favorites.any { it.kind == kind && it.contentId == id }
 
     /** By content key, for episodes, which have no numeric id to match on. */
-    fun isFavouriteByKey(contentKey: String): Boolean =
-        favourites.any { it.contentKey == contentKey }
+    fun isFavoriteByKey(contentKey: String): Boolean =
+        favorites.any { it.contentKey == contentKey }
 
     fun progress(kind: ContentKind, id: Int): PlaybackProgress? =
         continueWatching.firstOrNull { it.contentKey == contentKey(kind, id) }
 }
 
-/** Which catalogue the browse screen is showing; they are separate namespaces in the panel. */
+/** Which catalog the browse screen is showing; they are separate namespaces in the panel. */
 enum class VodSection(val kind: ContentKind) {
     MOVIES(ContentKind.MOVIE),
     SERIES(ContentKind.SERIES),
+}
+
+/**
+ * A favorites row resolved back into something that can be opened.
+ *
+ * Three shapes rather than two, and [SeriesItem] is the reason: a favorite series is a favorite
+ * *list of episodes*, and picking one would be a guess. The caller opens the detail screen instead
+ * and lets the viewer choose, which is also what they would have to do from the Series tab.
+ */
+sealed interface FavoriteTarget {
+    data class FilmItem(val movie: Movie, val url: String, val resumeSeconds: Long) : FavoriteTarget
+    data class EpisodeItem(val episode: Episode, val url: String, val resumeSeconds: Long) : FavoriteTarget
+    data class SeriesItem(val series: Series) : FavoriteTarget
 }
 
 /** A "continue watching" row resolved back into something the player can open. */
@@ -116,7 +129,7 @@ sealed interface Resumable {
     data class EpisodeItem(val episode: Episode, val url: String, val resumeSeconds: Long) : Resumable
 }
 
-// `flatMapLatest` is still marked experimental, so the catalogue load opts in rather than leaving
+// `flatMapLatest` is still marked experimental, so the catalog load opts in rather than leaving
 // the warning to be rediscovered on every build.
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class VodViewModel(
@@ -255,8 +268,8 @@ class VodViewModel(
             }
         }
         viewModelScope.launch {
-            repository.observeFavourites().collect { rows ->
-                _library.update { it.copy(favourites = rows) }
+            repository.observeFavorites().collect { rows ->
+                _library.update { it.copy(favorites = rows) }
             }
         }
     }
@@ -519,8 +532,58 @@ class VodViewModel(
         return Resumable.FilmItem(movie, repository.movieStreamUrl(movie), progress.positionSeconds)
     }
 
-    fun toggleFavourite(kind: ContentKind, id: Int, name: String, subtitle: String?, posterUrl: String?) {
-        toggleFavouriteByKey(contentKey(kind, id), name, subtitle, posterUrl, kind = kind, contentId = id)
+    /**
+     * Turn a favorites row into something that can be opened.
+     *
+     * Separate from [resolveForResume] because the two answer different questions. Continue-watching
+     * rows always have a position and a kind that can play; a favorites row is a bookmark, and a
+     * bookmark to a series is a bookmark to a *list of episodes* with no way to know which one the
+     * viewer meant. So this returns three shapes rather than two, and the caller opens the series
+     * detail rather than guessing at an episode.
+     *
+     * Resume position is carried through rather than reset, so favoriting a film half-watched and
+     * coming back to it from the library picks up where it was left. That is the whole point of a
+     * bookmark; starting again would be a small betrayal of it.
+     *
+     * Null when the thing is gone - a film withdrawn at the provider, a series that has aged out of
+     * the cache, an episode whose series is no longer loaded. The caller does nothing rather than
+     * opening a player on an empty url.
+     */
+    suspend fun resolveFavorite(favorite: Favorite): FavoriteTarget? = when (favorite.kind) {
+        ContentKind.MOVIE -> {
+            val movie = repository.findMovie(favorite.contentId) ?: return null
+            val progress = repository.progressFor(ContentKind.MOVIE, movie.id)
+            FavoriteTarget.FilmItem(
+                movie = movie,
+                url = repository.movieStreamUrl(movie),
+                resumeSeconds = progress?.positionSeconds ?: 0,
+            )
+        }
+
+        ContentKind.EPISODE -> {
+            // An episode's stored key is the namespaced `EPISODE:<rowKey>` form, because that is
+            // what identifies it across series - `contentId` is 0 and carries nothing. The row key
+            // has to come back out of it before the episode can be looked up.
+            val rowKey = episodeRowKeyFromKey(favorite.contentKey) ?: return null
+            val episode = repository.findEpisode(rowKey) ?: return null
+            val url = repository.episodeStreamUrl(episode) ?: return null
+            FavoriteTarget.EpisodeItem(episode, url, resumeSeconds = 0)
+        }
+
+        ContentKind.SERIES -> repository.findSeries(favorite.contentId)
+            ?.let { FavoriteTarget.SeriesItem(it) }
+
+        else -> null
+    }
+
+    /** The episode row key out of an `EPISODE:<rowKey>` content key, or null if it is not one. */
+    private fun episodeRowKeyFromKey(key: String): String? {
+        val prefix = "${ContentKind.EPISODE.name}:"
+        return key.removePrefix(prefix).takeIf { key.startsWith(prefix) && it.isNotEmpty() }
+    }
+
+    fun toggleFavorite(kind: ContentKind, id: Int, name: String, subtitle: String?, posterUrl: String?) {
+        toggleFavoriteByKey(contentKey(kind, id), name, subtitle, posterUrl, kind = kind, contentId = id)
     }
 
     /**
@@ -529,7 +592,7 @@ class VodViewModel(
      * Keyed rather than by a numeric id because an episode has none; [contentId] is only carried for
      * the display and is meaningless for an episode.
      */
-    fun toggleFavouriteByKey(
+    fun toggleFavoriteByKey(
         contentKey: String,
         name: String,
         subtitle: String?,
@@ -538,13 +601,13 @@ class VodViewModel(
         contentId: Int = 0,
     ) {
         viewModelScope.launch {
-            val existing = repository.favouriteFor(contentKey)
+            val existing = repository.favoriteFor(contentKey)
             val derivedKind = kind ?: existing?.kind ?: kindFromKey(contentKey)
             if (existing != null) {
-                repository.removeFavourite(contentKey)
+                repository.removeFavorite(contentKey)
             } else {
-                repository.addFavourite(
-                    Favourite(
+                repository.addFavorite(
+                    Favorite(
                         contentKey = contentKey,
                         kind = derivedKind,
                         contentId = contentId,
@@ -583,7 +646,7 @@ class VodViewModel(
     }
 }
 
-/** Internal carrier for the catalogue stream, so loading and content land in one place. */
+/** Internal carrier for the catalog stream, so loading and content land in one place. */
 private data class ContentLoad(
     val movies: List<Movie> = emptyList(),
     val series: List<Series> = emptyList(),
