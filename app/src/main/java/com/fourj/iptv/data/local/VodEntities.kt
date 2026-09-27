@@ -98,8 +98,8 @@ data class PlaybackProgressEntity(
     val updatedAtMillis: Long,
 )
 
-@Entity(tableName = "favourites")
-data class FavouriteEntity(
+@Entity(tableName = "favorites")
+data class FavoriteEntity(
     @PrimaryKey val contentKey: String,
     val kind: String,
     val contentId: Int,

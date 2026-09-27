@@ -38,9 +38,9 @@ interface VodApi {
     /**
      * Series, optionally narrowed to one category and optionally paged.
      *
-     * [limit] and [start] exist for the search indexer. This provider's catalogue is on the order
+     * [limit] and [start] exist for the search indexer. This provider's catalog is on the order
      * of a hundred thousand titles, and asking for all of it in one call is what truncated a
-     * response and killed the app during testing - so the indexer walks the catalogue a page at a
+     * response and killed the app during testing - so the indexer walks the catalog a page at a
      * time instead. Paging by [categoryId] is the outer loop and paging within a category the inner
      * one, because a category is the unit the panel already handles well.
      */
@@ -53,7 +53,7 @@ interface VodApi {
     ): List<SeriesDto>
 
     /**
-     * The two catalogue reads, as raw bodies.
+     * The two catalog reads, as raw bodies.
      *
      * Same reason as [XtreamApi.liveStreamsRaw]: a large shelf is truncated by this provider, and
      * the JSON converter turns that into a failure that throws away every film or series that did
@@ -80,7 +80,7 @@ interface VodApi {
      *
      * Deliberate. The payload shape varies between panels - this one nests seasons at the top
      * level rather than under `episodes`, and where the episodes sit inside a season varies too -
-     * and a typed model silently drops whatever it does not recognise, which looks exactly like a
+     * and a typed model silently drops whatever it does not recognize, which looks exactly like a
      * series with no episodes. Decoding here means the keys can be logged when nothing is found,
      * instead of the failure being invisible.
      */

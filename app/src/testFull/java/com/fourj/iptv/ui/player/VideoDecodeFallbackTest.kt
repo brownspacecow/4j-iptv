@@ -11,7 +11,7 @@ import org.junit.Test
  * This exists because the first version of the check silently never returned true. It matched on
  * the exception message but was handed `errorCodeName`, which does not contain the renderer name,
  * so the fallback was dead code. It looked fine because the software decoder was also appended to
- * the renderer list, and appending is a real - just insufficient - behaviour.
+ * the renderer list, and appending is a real - just insufficient - behavior.
  *
  * The test cases are taken from what the device actually did, not invented: a real HEVC episode
  * (`video/x-matroska, video/hevc, hvc1.1.6.L93.90`, 1099x720) that `c2.goldfish.hevc.decoder`

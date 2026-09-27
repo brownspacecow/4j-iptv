@@ -96,8 +96,8 @@ fun VodPlayerScreen(
     posterUrl: String?,
     resumePositionSeconds: Long,
     requestHeaders: Map<String, String>,
-    isFavourite: Boolean,
-    onToggleFavourite: () -> Unit,
+    isFavorite: Boolean,
+    onToggleFavorite: () -> Unit,
     onProgress: (PlaybackProgress) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
@@ -115,7 +115,7 @@ fun VodPlayerScreen(
      * Set by the key handler, acted on after the overlay has been composed.
      *
      * Going through a flag rather than requesting focus inline is what keeps this from crashing:
-     * the favourite button lives inside `if (overlayVisible)`, so on the frame that reveals it the
+     * the favorite button lives inside `if (overlayVisible)`, so on the frame that reveals it the
      * requester has no attached target and `requestFocus()` throws.
      */
     var pendingControlFocus by remember { mutableStateOf(false) }
@@ -290,7 +290,7 @@ fun VodPlayerScreen(
                     // Up and down move focus onto the overlay's controls rather than nudging the
                     // position. Left and right already scrub, which is the convention on every
                     // other player, and a control that cannot be reached is not a control - this is
-                    // the only way to favourite something without a pointer.
+                    // the only way to favorite something without a pointer.
                     //
                     // The request is deferred, not made here: the button exists only while the
                     // overlay is showing, so asking for its focus in the same event that reveals it
@@ -303,7 +303,7 @@ fun VodPlayerScreen(
 
                     Key.MediaPlayPause, Key.Enter, Key.NumPadEnter, Key.DirectionCenter -> {
                         // Let the focused control have it. Without this the preview handler eats
-                        // every press, so the Favourite button is visible, focusable and inert, and
+                        // every press, so the Favorite button is visible, focusable and inert, and
                         // OK silently pauses the video instead.
                         if (controlsFocused) return@onPreviewKeyEvent false
                         if (player.isPlaying) player.pause() else player.play()
@@ -381,12 +381,12 @@ fun VodPlayerScreen(
                         Box(modifier = Modifier.onFocusChanged { controlsFocused = it.isFocused }) {
                             Button(
                                 onClick = {
-                                    onToggleFavourite()
+                                    onToggleFavorite()
                                     overlayVisible = true
                                 },
                                 modifier = Modifier.focusRequester(controlsFocus),
                             ) {
-                                Text(if (isFavourite) "★ Favourited" else "☆ Favourite")
+                                Text(if (isFavorite) "★ Favorited" else "☆ Favorite")
                             }
                         }
                     }

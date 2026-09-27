@@ -21,13 +21,13 @@ import java.util.Locale
  * Whether this device can turn speech into text.
  *
  * Asking is not the same as assuming, and the difference is the whole reason this function exists.
- * Android TV is not a uniform platform: some images ship a recogniser, some do not, and the app has
+ * Android TV is not a uniform platform: some images ship a recognizer, some do not, and the app has
  * no way to install one. A voice button that is always shown is a button that does nothing on a
- * device without a recogniser, which is worse than no button at all - a control that fails silently
+ * device without a recognizer, which is worse than no button at all - a control that fails silently
  * reads as a broken app rather than as a missing feature.
  *
  * Must be `remember`ed on the context, and the context must be the current one: the answer can
- * change if a recogniser package is installed or removed while the app is running, and the caller
+ * change if a recognizer package is installed or removed while the app is running, and the caller
  * only wants to rebuild the button, not re-run a package query on every recomposition.
  */
 @Composable
@@ -39,8 +39,8 @@ fun rememberVoiceSearchAvailable(): Boolean {
 /**
  * Speak a search query.
  *
- * **The recogniser does the recording, not this app.** [RecognizerIntent] launches whatever
- * recogniser the device provides and takes the text back as an activity result. The alternative -
+ * **The recognizer does the recording, not this app.** [RecognizerIntent] launches whatever
+ * recognizer the device provides and takes the text back as an activity result. The alternative -
  * `AudioRecord` into a bundled speech model - would mean shipping a model, holding
  * `RECORD_AUDIO`, and reimplementing recognition, to produce a worse result than the one already
  * installed and already trained on the viewer's accent. Letting the platform own it also means this
@@ -68,7 +68,7 @@ fun VoiceSearchButton(
     Button(
         onClick = {
             val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                // Free form, not web search. This catalogue is searched by title, and the web-search
+                // Free form, not web search. This catalog is searched by title, and the web-search
                 // model is tuned to answer questions, which biases it towards long natural phrases
                 // and away from the two or three words a viewer actually says.
                 putExtra(
@@ -87,7 +87,7 @@ fun VoiceSearchButton(
             try {
                 launcher.launch(intent)
             } catch (_: ActivityNotFoundException) {
-                // The recogniser was uninstalled between the availability check and the press.
+                // The recognizer was uninstalled between the availability check and the press.
                 // Deliberately silent: the button is only ever rendered when the check passed, so
                 // reaching here means the device changed under us, and there is no useful thing to
                 // say to someone holding a remote.
@@ -105,17 +105,17 @@ fun VoiceSearchButton(
 }
 
 /**
- * The query a speech recogniser handed back, or null if it handed back nothing usable.
+ * The query a speech recognizer handed back, or null if it handed back nothing usable.
  *
  * Split out and pure so it can be tested, because this is the one part of voice search that cannot
  * be exercised on a device without a microphone - and a television emulator has none. Everything
  * around it is observable: the button appears, it takes focus, it launches the right intent, and
- * cancelling comes back clean. Whether the recognised words actually reach the search box is the
+ * cancelling comes back clean. Whether the recognized words actually reach the search box is the
  * part that would otherwise ship unverified.
  *
  * Null means "change nothing", and that is the correct answer for every failure case rather than
  * an empty string. An empty query would clear the box, so someone who opened the microphone by
- * accident and cancelled would lose what they had already typed - a small thing, and exactly the
+ * accident and canceled would lose what they had already typed - a small thing, and exactly the
  * kind that is only noticed once it has happened.
  */
 internal fun spokenQuery(resultCode: Int, data: Intent?): String? {

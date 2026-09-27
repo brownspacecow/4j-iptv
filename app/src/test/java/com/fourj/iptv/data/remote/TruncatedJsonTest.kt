@@ -6,9 +6,9 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 /**
- * Salvaging a catalogue the provider cut off.
+ * Salvaging a catalog the provider cut off.
  *
- * The behaviour that matters: a shelf must not be lost because its *last* title was incomplete. A
+ * The behavior that matters: a shelf must not be lost because its *last* title was incomplete. A
  * film shelf here is about 20 MB and is cut at roughly 2.2 MB, so every large shelf on this provider
  * ends mid-record - and the titles before the cut are perfectly good ones someone might search for.
  *

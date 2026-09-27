@@ -115,7 +115,7 @@ class VodMigrationTest {
         db.execSQL("INSERT INTO vod_categories VALUES ('10','Old Films',0)")
         db.execSQL(
             "INSERT INTO favourites (contentKey,kind,contentId,name,addedAtMillis) " +
-                "VALUES ('MOVIE:1001','MOVIE',1001,'A Favourite',1700000000000)",
+                "VALUES ('MOVIE:1001','MOVIE',1001,'A Favorite',1700000000000)",
         )
         db.execSQL(
             "INSERT INTO playback_progress " +
@@ -133,7 +133,7 @@ class VodMigrationTest {
      */
     private fun openMigrated(): VodDatabase =
         Room.databaseBuilder(context, VodDatabase::class.java, fileName)
-            .addMigrations(VOD_MIGRATION_1_2, VOD_MIGRATION_2_3, VOD_MIGRATION_3_4)
+            .addMigrations(VOD_MIGRATION_1_2, VOD_MIGRATION_2_3, VOD_MIGRATION_3_4, VOD_MIGRATION_4_5)
             .allowMainThreadQueries()
             .build()
 
@@ -223,7 +223,7 @@ class VodMigrationTest {
      *
      * Rows survive with a null value, so the episode list stays populated and only needs that one
      * series refetched before its episodes are playable again. Worth doing properly rather than by
-     * wiping the cache, which would cost the viewer their progress and favourites.
+     * wiping the cache, which would cost the viewer their progress and favorites.
      */
     @Test
     fun `migrating from version 2 adds the episode stream id without losing episodes`() = runTest {
@@ -252,8 +252,8 @@ class VodMigrationTest {
      * v3 -> v4 adds the shelf sync table, and nothing else moves.
      *
      * The table is new and empty, so every shelf is treated as not-yet-downloaded and loads on first
-     * visit. The point of the test is the other half: films, series, favourites and progress all
-     * survive, because a schema change is not a licence to lose what someone watched.
+     * visit. The point of the test is the other half: films, series, favorites and progress all
+     * survive, because a schema change is not a license to lose what someone watched.
      */
     @Test
     fun `migrating from version 3 adds the shelf sync table and keeps the cache`() = runTest {
@@ -275,8 +275,8 @@ class VodMigrationTest {
         try {
             // The cached film is still there...
             assertNotNull(db.vodDao().findMovie(500))
-            // ...the favourite is still there...
-            assertEquals(1, db.libraryDao().favouriteFor("MOVIE:500")?.let { 1 })
+            // ...the favorite is still there...
+            assertEquals(1, db.libraryDao().favoriteFor("MOVIE:500")?.let { 1 })
             // ...and nothing claims to have been synced, so every shelf still loads on first visit.
             assertEquals(false, db.vodSyncDao().isSynced("10", ContentKind.MOVIE.name))
         } finally {
@@ -290,12 +290,12 @@ class VodMigrationTest {
 
         val db = openMigrated()
         try {
-            val favourites = db.libraryDao().observeFavourites().first()
-            assertEquals(1, favourites.size)
-            assertEquals("A Favourite", favourites.single().name)
+            val favorites = db.libraryDao().observeFavorites().first()
+            assertEquals(1, favorites.size)
+            assertEquals("A Favorite", favorites.single().name)
             // Stored as text on purpose, so a kind added in a later release still reads back; the
             // mapping to the enum is the repository's job, not the row's.
-            assertEquals(ContentKind.MOVIE.name, favourites.single().kind)
+            assertEquals(ContentKind.MOVIE.name, favorites.single().kind)
 
             val progress = db.libraryDao().progressFor("MOVIE:1001")
             assertEquals(600L, progress!!.positionSeconds)
@@ -342,15 +342,15 @@ class VodMigrationTest {
     }
 
     @Test
-    fun `favourites and progress survive with their kinds intact`() = runTest {
+    fun `favorites and progress survive with their kinds intact`() = runTest {
         upgradeToV2()
 
         val db = openMigrated()
         try {
             // Kinds are stored as text, so a bad migration could leave them unreadable and every
-            // favourite would fall back to MOVIE.
-            db.libraryDao().addFavourite(
-                FavouriteEntity(
+            // favorite would fall back to MOVIE.
+            db.libraryDao().addFavorite(
+                FavoriteEntity(
                     contentKey = "SERIES:3001",
                     kind = ContentKind.SERIES.name,
                     contentId = 3001,
@@ -360,8 +360,80 @@ class VodMigrationTest {
                     addedAtMillis = 1L,
                 ),
             )
-            val stored = db.libraryDao().favouriteFor("SERIES:3001")!!
+            val stored = db.libraryDao().favoriteFor("SERIES:3001")!!
             assertEquals(ContentKind.SERIES.name, stored.kind)
+        } finally {
+            db.close()
+        }
+    }
+
+
+    /**
+
+     * v4 -> v5 renames the favorites table and keeps every row.
+
+     *
+
+     * The one migration here that exists only to match a spelling, and so the one most likely to be
+
+     * "simplified" away by someone who reads it as cosmetic. It is not: Room checks the schema it
+
+     * finds against the schema the entities describe every time the database is opened, so a renamed
+
+     * table with no migration throws on launch for every existing install - and the viewer's own
+
+     * saved favorites are what makes the rename visible in the first place.
+
+     *
+
+     * The row is inserted into a table called `favourites` and read back out of `favorites`, which is
+
+     * the whole assertion. A migration that quietly created an empty new table and dropped the old
+
+     * one would pass a test that only checked the new name existed.
+
+     */
+
+    /**
+     * v4 -> v5 renames the favorites table and keeps every row.
+     *
+     * The one migration here that exists only to match a spelling, and so the one most likely to be
+     * "simplified" away by someone who reads it as cosmetic. It is not: Room checks the schema it
+     * finds against the schema the entities describe every time the database is opened, so a renamed
+     * table with no migration throws on launch for every existing install - and the viewer's own
+     * saved favorites are what makes the rename visible in the first place.
+     *
+     * The row goes into a table called `favourites` and is read back out of `favorites`. That is the
+     * whole assertion: a migration that quietly created an empty new table and dropped the old one
+     * would pass a test which only checked that the new name existed.
+     */
+    @Test
+    fun `migrating from version 4 renames the favorites table without losing rows`() = runTest {
+        val version2 = createVersion2Database()
+        version2.execSQL(
+            "INSERT INTO favourites (contentKey,kind,contentId,name,addedAtMillis) " +
+                "VALUES ('MOVIE:500','MOVIE',500,'Kept Film',1)",
+        )
+        // Walk it up to v4 the way a real install would have been, so the table really is called
+        // `favourites` when the rename runs. Pre-renaming it here would pass a migration that did
+        // nothing at all, which is the failure this test exists to catch.
+        VOD_MIGRATION_2_3.migrate(version2)
+        version2.version = 3
+        VOD_MIGRATION_3_4.migrate(version2)
+        version2.version = 4
+        VOD_MIGRATION_4_5.migrate(version2)
+        version2.version = 5
+        version2.close()
+
+        val db = openMigrated()
+        try {
+            // Opening at all is half the assertion: Room re-reads the schema and compares it against
+            // what the entities describe, so a table recreated empty, or left under the old name,
+            // fails here rather than passing a test that only checked the new name existed.
+            val favorites = db.libraryDao().observeFavorites().first()
+            assertEquals(1, favorites.size)
+            assertEquals("Kept Film", favorites.single().name)
+            assertEquals(ContentKind.MOVIE.name, favorites.single().kind)
         } finally {
             db.close()
         }

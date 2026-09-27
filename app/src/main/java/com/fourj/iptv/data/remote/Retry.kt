@@ -8,7 +8,7 @@ private const val TAG = "4J"
 /**
  * Run [block], retrying a few times before giving up.
  *
- * This exists because of a specific, observed panel behaviour: `get_live_streams` on a large
+ * This exists because of a specific, observed panel behavior: `get_live_streams` on a large
  * category intermittently returns a **truncated JSON body** - the connection is closed partway
  * through the array, and deserialisation fails with "expected end of array, but had EOF". The
  * categories call is small and never does this; a big channel list does, often enough that a

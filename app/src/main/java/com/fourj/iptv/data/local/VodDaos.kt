@@ -98,16 +98,16 @@ interface LibraryDao {
     suspend fun clearProgress(contentKey: String)
 
 
-    @Query("SELECT * FROM favourites ORDER BY addedAtMillis DESC")
-    fun observeFavourites(): Flow<List<FavouriteEntity>>
+    @Query("SELECT * FROM favorites ORDER BY addedAtMillis DESC")
+    fun observeFavorites(): Flow<List<FavoriteEntity>>
 
-    @Query("SELECT * FROM favourites WHERE contentKey = :contentKey LIMIT 1")
-    suspend fun favouriteFor(contentKey: String): FavouriteEntity?
+    @Query("SELECT * FROM favorites WHERE contentKey = :contentKey LIMIT 1")
+    suspend fun favoriteFor(contentKey: String): FavoriteEntity?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun addFavourite(row: FavouriteEntity)
+    suspend fun addFavorite(row: FavoriteEntity)
 
-    @Query("DELETE FROM favourites WHERE contentKey = :contentKey")
-    suspend fun removeFavourite(contentKey: String)
+    @Query("DELETE FROM favorites WHERE contentKey = :contentKey")
+    suspend fun removeFavorite(contentKey: String)
 
 }

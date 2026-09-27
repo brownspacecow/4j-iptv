@@ -7,7 +7,7 @@ import kotlinx.serialization.json.Json
 private const val TAG = "4J"
 
 /**
- * Parse a catalogue response, keeping whatever the panel managed to send.
+ * Parse a catalog response, keeping whatever the panel managed to send.
  *
  * Parses normally when the body is complete. When it is not, closes the array at its last complete
  * element and parses that, logging how much was salvaged and how much never arrived.
@@ -15,7 +15,7 @@ private const val TAG = "4J"
  * Falls back to failing the call if there is nothing to salvage, so a genuinely unreadable response
  * still surfaces as an error rather than as an empty category.
  */
-internal fun <T> readCatalogueLeniently(
+internal fun <T> readCatalogLeniently(
     body: String,
     expectedBytes: Long?,
     strategy: DeserializationStrategy<T>,
@@ -41,7 +41,7 @@ internal fun <T> readCatalogueLeniently(
 /**
  * Salvaging a JSON array the provider cut off.
  *
- * This panel truncates large catalogue responses constantly - a film shelf is about 20 MB and the
+ * This panel truncates large catalog responses constantly - a film shelf is about 20 MB and the
  * body is cut at roughly 2.2 MB, which kotlinx.serialization rejects with "expected end of array,
  * but had EOF". Treating that as a failed request throws away every title that *did* arrive, and
  * with it any chance of searching them: a run on this provider left 99 of 269 shelves unreadable for

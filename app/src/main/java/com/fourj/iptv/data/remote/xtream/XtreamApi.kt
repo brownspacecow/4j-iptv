@@ -41,7 +41,7 @@ interface XtreamApi {
     /**
      * The same call, as a raw body.
      *
-     * Deliberately not the same method. This provider truncates large catalogue responses - a live
+     * Deliberately not the same method. This provider truncates large catalog responses - a live
      * shelf comes back cut off partway through the array - and the JSON converter treats that as a
      * hard failure, discarding several megabytes of channels that arrived intact. Reading the body
      * lets [com.fourj.iptv.data.remote.TruncatedJson] close the array at its last complete channel

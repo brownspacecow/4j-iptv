@@ -5,7 +5,7 @@ import com.fourj.iptv.data.local.IndexProgressEntity
 import com.fourj.iptv.data.local.SearchIndexDatabase
 import com.fourj.iptv.data.local.SearchIndexEntity
 import com.fourj.iptv.data.remote.XtreamNetwork
-import com.fourj.iptv.data.remote.readCatalogueLeniently
+import com.fourj.iptv.data.remote.readCatalogLeniently
 import com.fourj.iptv.data.remote.retrying
 import com.fourj.iptv.data.remote.xtream.LiveStreamDto
 import com.fourj.iptv.data.remote.xtream.SeriesDto
@@ -97,13 +97,13 @@ data class IndexCoverage(
 }
 
 /**
- * Search over the provider's catalogue.
+ * Search over the provider's catalog.
  *
  * **Why this is a local index and not a panel query.** Every server-side search action was tried
  * against the provider during testing: `search_streams`, `search`, `search_vod`, `search_movies`,
  * `search_movie` and `search_series` are all ignored, each answered with a login object. Passing
  * `search` to `get_vod_streams` or `get_series` is worse than useless - the parameter is ignored and
- * the whole catalogue comes back, large enough on this provider to have the app killed for memory
+ * the whole catalog comes back, large enough on this provider to have the app killed for memory
  * while trying to buffer it. So there is no server-side search to use, and the honest answer is an
  * index built on the device.
  *
@@ -323,7 +323,7 @@ class SearchRepository(
         if (dao.progressFor(scope)?.complete == true) return 0
 
         val channels = retrying(label = "index live[${category.id}]") {
-            readCatalogue(
+            readCatalog(
                 label = "index live[${category.id}]",
                 fetch = { liveApi.liveStreamsRaw(categoryId = category.id) },
                 strategy = ListSerializer(LiveStreamDto.serializer()),
@@ -367,7 +367,7 @@ class SearchRepository(
      * supplied by the caller because `get_series` and `get_vod_streams` return different DTO types;
      * the two used to be near-identical loops differing only in that call and the row mapping.
      *
-     * **Stops when paging turns out not to work** - see [pagingIsHonoured].
+     * **Stops when paging turns out not to work** - see [pagingIsHonored].
      */
     private suspend fun indexShelf(
         category: VodCategory,
@@ -385,7 +385,7 @@ class SearchRepository(
 
         while (true) {
             val page = fetch(offset)
-            val honoursPaging = pagingIsHonoured(firstIdOfFirstPage, page.rows.firstOrNull()?.contentId)
+            val honorsPaging = pagingIsHonored(firstIdOfFirstPage, page.rows.firstOrNull()?.contentId)
             if (firstIdOfFirstPage == null) firstIdOfFirstPage = page.rows.firstOrNull()?.contentId
 
             if (page.rows.isNotEmpty()) {
@@ -400,7 +400,7 @@ class SearchRepository(
             // Measured on what the panel *sent*, not on what survived filtering: a full page with a
             // few untitled rows dropped would otherwise look like a short page and end the shelf
             // early, leaving everything after it unindexed with nothing to show for it.
-            val finished = page.received < pageSize || !honoursPaging
+            val finished = page.received < pageSize || !honorsPaging
             dao.saveProgress(
                 IndexProgressEntity(
                     scope = scope,
@@ -427,7 +427,7 @@ class SearchRepository(
     private class Page(val received: Int, val rows: List<SearchIndexEntity>)
 
     /**
-     * Whether the panel is honouring `start`, decided by whether the second page starts where the
+     * Whether the panel is honoring `start`, decided by whether the second page starts where the
      * first one did.
      *
      * Null on the first page, where there is nothing to compare against and the answer is "assume
@@ -440,27 +440,27 @@ class SearchRepository(
      * It only escaped that before because such shelves were also large enough to be truncated by the
      * panel and skipped - the loop was never exercised, just never triggered.
      */
-    private fun pagingIsHonoured(firstIdOfFirstPage: Int?, firstIdOfThisPage: Int?): Boolean {
+    private fun pagingIsHonored(firstIdOfFirstPage: Int?, firstIdOfThisPage: Int?): Boolean {
         if (firstIdOfFirstPage == null) return true
         if (firstIdOfThisPage == null) return true
         return firstIdOfFirstPage != firstIdOfThisPage
     }
 
     /**
-     * Read a catalogue response, keeping the part of it that arrived.
+     * Read a catalog response, keeping the part of it that arrived.
      *
      * This is what turns the panel's habit of cutting a large response off mid-array from a failure
      * into a partial success. Before, a shelf whose last film never arrived was discarded whole -
      * every film before it included - and 99 of 269 shelves ended up unreadable for that reason.
      */
-    private suspend fun <T> readCatalogue(
+    private suspend fun <T> readCatalog(
         label: String,
         fetch: suspend () -> ResponseBody,
         strategy: KSerializer<List<T>>,
     ): List<T> = withContext(Dispatchers.IO) {
         fetch().use { response ->
             val body = response.string()
-            readCatalogueLeniently(
+            readCatalogLeniently(
                 body = body,
                 expectedBytes = response.contentLength(),
                 strategy = strategy,
@@ -473,7 +473,7 @@ class SearchRepository(
     private suspend fun indexSeriesCategory(category: VodCategory): Int =
         indexShelf(category, ContentKind.SERIES) { offset ->
             val page = retrying(label = "index series[${category.id}]@$offset") {
-                readCatalogue(
+                readCatalog(
                     label = "index series[${category.id}]",
                     fetch = { vodApi.seriesRaw(categoryId = category.id, limit = pageSize, start = offset) },
                     strategy = ListSerializer(SeriesDto.serializer()),
@@ -485,7 +485,7 @@ class SearchRepository(
     private suspend fun indexMovieCategory(category: VodCategory): Int =
         indexShelf(category, ContentKind.MOVIE) { offset ->
             val page = retrying(label = "index movies[${category.id}]@$offset") {
-                readCatalogue(
+                readCatalog(
                     label = "index movies[${category.id}]",
                     fetch = { vodApi.vodStreamsRaw(categoryId = category.id, limit = pageSize, start = offset) },
                     strategy = ListSerializer(VodStreamDto.serializer()),

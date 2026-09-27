@@ -13,7 +13,7 @@ import com.fourj.iptv.data.remote.retrying
 import com.fourj.iptv.data.remote.runCatchingCancellable
 import com.fourj.iptv.data.remote.StreamUrls
 import com.fourj.iptv.data.remote.XtreamNetwork
-import com.fourj.iptv.data.remote.readCatalogueLeniently
+import com.fourj.iptv.data.remote.readCatalogLeniently
 import com.fourj.iptv.data.remote.xtream.SeriesDto
 import com.fourj.iptv.data.remote.xtream.SeriesInfoResponse
 import com.fourj.iptv.data.remote.xtream.VodApi
@@ -21,7 +21,7 @@ import com.fourj.iptv.data.remote.xtream.VodStreamDto
 import com.fourj.iptv.data.remote.xtream.VodCategoryDto
 import com.fourj.iptv.domain.model.ContentKind
 import com.fourj.iptv.domain.model.Episode
-import com.fourj.iptv.domain.model.Favourite
+import com.fourj.iptv.domain.model.Favorite
 import com.fourj.iptv.domain.model.Movie
 import com.fourj.iptv.domain.model.PlaybackProgress
 import com.fourj.iptv.domain.model.ProviderProfile
@@ -41,8 +41,8 @@ import okhttp3.ResponseBody
 import kotlinx.serialization.json.decodeFromJsonElement
 
 /**
- * On-demand catalogue and library.
- * On-demand catalogue and library.
+ * On-demand catalog and library.
+ * On-demand catalog and library.
  *
  * Cached the same way live TV is: categories always, contents per category on demand, because a
  * film library is far too large to fetch in one call and panels truncate big responses.
@@ -118,7 +118,7 @@ class VodRepository(
 
                 if (kind == ContentKind.MOVIE) {
                     val rows = retrying(label = "get_vod_streams[$categoryId]") {
-                        readCatalogue(
+                        readCatalog(
                             label = "get_vod_streams[$categoryId]",
                             fetch = { api.vodStreamsRaw(categoryId = categoryId) },
                             strategy = ListSerializer(VodStreamDto.serializer()),
@@ -127,7 +127,7 @@ class VodRepository(
                     database.replaceMoviesInCategory(categoryId, rows)
                 } else {
                     val rows = retrying(label = "get_series[$categoryId]") {
-                        readCatalogue(
+                        readCatalog(
                             label = "get_series[$categoryId]",
                             fetch = { api.seriesRaw(categoryId = categoryId) },
                             strategy = ListSerializer(SeriesDto.serializer()),
@@ -146,21 +146,21 @@ class VodRepository(
         }
 
     /**
-     * Read a catalogue response, keeping the part of it that arrived.
+     * Read a catalog response, keeping the part of it that arrived.
      *
      * A large shelf is truncated by this provider, and a truncated response used to fail the whole
      * call - so a shelf whose last film never arrived lost every film before it too, and the browse
      * screen showed nothing. Closing the array at its last complete title turns that into a shelf
      * that is very nearly full.
      */
-    private suspend fun <T> readCatalogue(
+    private suspend fun <T> readCatalog(
         label: String,
         fetch: suspend () -> ResponseBody,
         strategy: KSerializer<List<T>>,
     ): List<T> = withContext(ioDispatcher) {
         fetch().use { response ->
             val body = response.string()
-            readCatalogueLeniently(
+            readCatalogLeniently(
                 body = body,
                 expectedBytes = response.contentLength(),
                 strategy = strategy,
@@ -313,33 +313,33 @@ class VodRepository(
         database.libraryDao().clearProgress(contentKey(kind, contentId))
     }
 
-    fun observeFavourites(): Flow<List<Favourite>> =
-        database.libraryDao().observeFavourites()
+    fun observeFavorites(): Flow<List<Favorite>> =
+        database.libraryDao().observeFavorites()
             .map { rows -> rows.map { it.toModel() } }
             .flowOn(ioDispatcher)
 
-    suspend fun favouriteFor(contentKey: String): Favourite? =
-        withContext(ioDispatcher) { database.libraryDao().favouriteFor(contentKey)?.toModel() }
+    suspend fun favoriteFor(contentKey: String): Favorite? =
+        withContext(ioDispatcher) { database.libraryDao().favoriteFor(contentKey)?.toModel() }
 
-    suspend fun addFavourite(favourite: Favourite) = withContext(ioDispatcher) {
-        database.libraryDao().addFavourite(favourite.toEntity())
+    suspend fun addFavorite(favorite: Favorite) = withContext(ioDispatcher) {
+        database.libraryDao().addFavorite(favorite.toEntity())
     }
 
-    suspend fun removeFavourite(contentKey: String) = withContext(ioDispatcher) {
-        database.libraryDao().removeFavourite(contentKey)
+    suspend fun removeFavorite(contentKey: String) = withContext(ioDispatcher) {
+        database.libraryDao().removeFavorite(contentKey)
     }
 
-    suspend fun isFavourite(kind: ContentKind, contentId: Int): Boolean =
+    suspend fun isFavorite(kind: ContentKind, contentId: Int): Boolean =
         withContext(ioDispatcher) {
-            database.libraryDao().favouriteFor(contentKey(kind, contentId)) != null
+            database.libraryDao().favoriteFor(contentKey(kind, contentId)) != null
         }
 
-    suspend fun toggleFavourite(favourite: Favourite) = withContext(ioDispatcher) {
-        val key = favourite.contentKey
-        if (database.libraryDao().favouriteFor(key) != null) {
-            database.libraryDao().removeFavourite(key)
+    suspend fun toggleFavorite(favorite: Favorite) = withContext(ioDispatcher) {
+        val key = favorite.contentKey
+        if (database.libraryDao().favoriteFor(key) != null) {
+            database.libraryDao().removeFavorite(key)
         } else {
-            database.libraryDao().addFavourite(favourite.toEntity())
+            database.libraryDao().addFavorite(favorite.toEntity())
         }
     }
 
@@ -513,7 +513,7 @@ internal fun com.fourj.iptv.data.local.PlaybackProgressEntity.toModel() = Playba
     contentId = contentId,
 )
 
-internal fun Favourite.toEntity() = com.fourj.iptv.data.local.FavouriteEntity(
+internal fun Favorite.toEntity() = com.fourj.iptv.data.local.FavoriteEntity(
     contentKey = contentKey,
     kind = kind.name,
     contentId = contentId,
@@ -523,7 +523,7 @@ internal fun Favourite.toEntity() = com.fourj.iptv.data.local.FavouriteEntity(
     addedAtMillis = addedAtMillis,
 )
 
-internal fun com.fourj.iptv.data.local.FavouriteEntity.toModel() = Favourite(
+internal fun com.fourj.iptv.data.local.FavoriteEntity.toModel() = Favorite(
     contentKey = contentKey,
     kind = runCatching { ContentKind.valueOf(kind) }.getOrDefault(ContentKind.MOVIE),
     contentId = contentId,
@@ -538,7 +538,7 @@ internal fun com.fourj.iptv.data.local.FavouriteEntity.toModel() = Favourite(
  *
  * The kind is part of the key because live channels, films and episodes all use bare numeric ids
  * that overlap freely, and without it a film of id 101 and a live channel of id 101 would share
- * a favourite or a resume position.
+ * a favorite or a resume position.
  */
 internal fun contentKey(kind: ContentKind, contentId: Int): String = "${kind.name}:$contentId"
 
@@ -549,14 +549,14 @@ internal fun com.fourj.iptv.data.remote.xtream.SeriesInfoResponse.shape(): Strin
     episodes is kotlinx.serialization.json.JsonObject &&
         (episodes as kotlinx.serialization.json.JsonObject).isNotEmpty() -> "keyed-by-season"
     topLevelSeasons?.isNotEmpty() == true -> "summaries-only"
-    else -> "unrecognised"
+    else -> "unrecognized"
 }
 
 /**
  * A one-line description of where this payload keeps its seasons and episodes.
  *
  * Diagnostic only, and deliberately reads the raw JSON: a typed model has already discarded
- * anything it did not recognise by the time it reaches here, which is exactly the information
+ * anything it did not recognize by the time it reaches here, which is exactly the information
  * needed to work out why nothing was read. Panels disagree about this nesting, and three
  * different layouts have now turned up.
  */

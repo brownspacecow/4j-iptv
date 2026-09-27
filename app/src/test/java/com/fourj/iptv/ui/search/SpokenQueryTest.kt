@@ -10,13 +10,13 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 
 /**
- * Covers reading a query back out of a speech recogniser's result.
+ * Covers reading a query back out of a speech recognizer's result.
  *
  * This exists because voice search cannot be tested on the emulator. The device used for
- * development reports no `android.hardware.microphone` feature, so a recogniser launches, waits for
- * audio that will never arrive, and has to be cancelled. Everything around that path is observed -
+ * development reports no `android.hardware.microphone` feature, so a recognizer launches, waits for
+ * audio that will never arrive, and has to be canceled. Everything around that path is observed -
  * the button appears, it takes focus, the right intent is sent, cancelling returns cleanly - but the
- * recognised words never make it into the field, and the parsing was otherwise untested.
+ * recognized words never make it into the field, and the parsing was otherwise untested.
  *
  * The cases that matter are the ones where the answer is null. Null means "leave the query alone",
  * so every one of them is a situation where getting it wrong destroys something the viewer had
@@ -27,7 +27,7 @@ import org.robolectric.RobolectricTestRunner
  * `isReturnDefaultValues = true`, so on a plain JVM every android.jar method is a stub that returns
  * null and writes nothing. A first attempt at this was a plain JVM test and five of the seven cases
  * passed - including every case asserting null. They passed because the stub returned null, not
- * because the logic was right, which is the worst possible behaviour for a test whose subject is
+ * because the logic was right, which is the worst possible behavior for a test whose subject is
  * "returns null when there is nothing to return". Under Robolectric a real [Intent] stores and
  * returns the extra, so a null now means the function decided null.
  */
@@ -46,7 +46,7 @@ class SpokenQueryTest {
 
     @Test
     fun `takes the first result`() {
-        // EXTRA_MAX_RESULTS is 1, but a recogniser is free to return more, and the first is the
+        // EXTRA_MAX_RESULTS is 1, but a recognizer is free to return more, and the first is the
         // one the platform documents as the best.
         val intent = Intent().putStringArrayListExtra(
             RecognizerIntent.EXTRA_RESULTS,
@@ -56,8 +56,8 @@ class SpokenQueryTest {
     }
 
     @Test
-    fun `trims the recognised text`() {
-        // Recognisers routinely hand back padding, and a leading space would make the search miss
+    fun `trims the recognized text`() {
+        // Recognizers routinely hand back padding, and a leading space would make the search miss
         // every title rather than merely look untidy.
         assertEquals("sky news", spokenQuery(Activity.RESULT_OK, result("  sky news \n")))
     }

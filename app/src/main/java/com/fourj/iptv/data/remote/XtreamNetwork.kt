@@ -23,7 +23,7 @@ import java.util.concurrent.TimeUnit
  * a 20s/60s client for ExoPlayer and its comment claimed it was "handed to ExoPlayer for media
  * segments" - it never was. Media goes through Media3's own `DefaultHttpDataSource`, configured in
  * the player screens, so the client was built, stored on the container and never read. Its intent
- * is now honoured where the media actually flows: see the timeouts in `PlayerScreen`.
+ * is now honored where the media actually flows: see the timeouts in `PlayerScreen`.
  */
 object XtreamNetwork {
 

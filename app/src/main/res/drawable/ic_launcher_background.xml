@@ -2,8 +2,8 @@
 <!--
     Launcher background: a diagonal indigo-to-violet gradient.
 
-    A flat colour was doing the job before, but an adaptive icon is shown against other icons on a
-    home screen, and a solid dark square reads as a hole next to the colourful ones. The gradient
+    A flat color was doing the job before, but an adaptive icon is shown against other icons on a
+    home screen, and a solid dark square reads as a hole next to the colorful ones. The gradient
     gives it enough presence to hold its own while staying out of the way of the mark in front.
 
     Covers the full 108dp canvas rather than just the 72dp safe zone on purpose: the launcher crops
@@ -35,7 +35,7 @@
     </path>
 
     <!--
-        A soft off-centre highlight, so the icon has some depth rather than reading as a printed
+        A soft off-center highlight, so the icon has some depth rather than reading as a printed
         sticker. Very low alpha on purpose: visible at arm's length, invisible as texture.
     -->
     <path android:pathData="M0,0 H108 V54 Q54,86 0,54 Z">

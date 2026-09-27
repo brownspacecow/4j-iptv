@@ -82,7 +82,7 @@ data class Episode(
      * Whether a stream URL can be built for this episode.
      *
      * Mirrors the rule in the URL builder: either the panel supplied a URL, or there is enough to
-     * construct the conventional `/series/` path. Kept here so the list can grey out an unplayable
+     * construct the conventional `/series/` path. Kept here so the list can gray out an unplayable
      * episode before it is pressed, rather than only explaining afterwards.
      */
     val isPlayable: Boolean
@@ -150,15 +150,15 @@ data class PlaybackProgress(
 }
 
 /**
- * What a favourite or a resume position refers to.
+ * What a favorite or a resume position refers to.
  *
  * Four kinds rather than two: the key has to distinguish a live channel from a film and an episode,
  * because all of them use bare numeric ids drawn from the same panel and they overlap freely.
  */
 enum class ContentKind { LIVE_CHANNEL, MOVIE, SERIES, EPISODE }
 
-/** A favourite, live or on-demand. */
-data class Favourite(
+/** A favorite, live or on-demand. */
+data class Favorite(
     /** Stable key: live channels and movies share the numeric id space across panels, so the kind
      *  is part of the key to keep a live channel from colliding with a film of the same id. */
     val contentKey: String,

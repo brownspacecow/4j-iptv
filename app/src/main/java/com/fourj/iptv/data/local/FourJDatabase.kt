@@ -132,7 +132,7 @@ abstract class FourJDatabase : RoomDatabase() {
  * App backup is disabled and the channel cache is disposable, so there is nothing here worth
  * preserving - but it is still written explicitly rather than relying on
  * `fallbackToDestructiveMigration`, which is deliberately not enabled. A destructive fallback
- * would silently wipe a user's favourites and progress on any future schema change, and the only
+ * would silently wipe a user's favorites and progress on any future schema change, and the only
  * way to notice that happening is to have already lost the data.
  */
 val MIGRATION_1_2 = object : Migration(1, 2) {

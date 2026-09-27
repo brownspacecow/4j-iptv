@@ -1,7 +1,7 @@
 package com.fourj.iptv.data.repository
 
 import com.fourj.iptv.domain.model.ContentKind
-import com.fourj.iptv.domain.model.Favourite
+import com.fourj.iptv.domain.model.Favorite
 import com.fourj.iptv.domain.model.PlaybackProgress
 import com.fourj.iptv.testing.PanelFixture
 import kotlinx.coroutines.Dispatchers
@@ -18,7 +18,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 
 /**
- * The on-demand catalogue, exercised against a stand-in panel over a real socket.
+ * The on-demand catalog, exercised against a stand-in panel over a real socket.
  *
  * Room runs in memory and Retrofit talks to a [PanelFixture], so the whole chain - HTTP, JSON,
  * mapping, the database - is covered without a device. That matters because the failures worth
@@ -115,7 +115,7 @@ class VodRepositoryTest {
         enqueue(VOD_STREAMS)
         repository.ensureCategoryLoaded("10", ContentKind.MOVIE)
         enqueue("""[{"num":1,"name":"Only Film Now","stream_id":9999,"category_id":"10"}]""")
-        // Forced, because an already-fetched shelf is now served from the cache. The behaviour under
+        // Forced, because an already-fetched shelf is now served from the cache. The behavior under
         // test is what happens when a shelf *is* re-fetched, and the cache guard has its own tests.
         repository.refreshCategory("10", ContentKind.MOVIE)
 
@@ -401,7 +401,7 @@ class VodRepositoryTest {
         assertEquals("nested", shapeOf(SERIES_INFO))
         assertEquals("keyed-by-season", shapeOf("""{"episodes":{"1":[{"id":"a","info_hash":"h"}]}}"""))
         assertEquals("summaries-only", shapeOf("""{"seasons":[{"id":"1","season_number":1}]}"""))
-        assertEquals("unrecognised", shapeOf("""{"info":{"name":"x"}}"""))
+        assertEquals("unrecognized", shapeOf("""{"info":{"name":"x"}}"""))
     }
 
     // -----------------------------------------------------------------------------------------
@@ -528,12 +528,12 @@ class VodRepositoryTest {
     }
 
     // -----------------------------------------------------------------------------------------
-    // Favourites
+    // Favorites
     // -----------------------------------------------------------------------------------------
 
     @Test
-    fun `toggling a favourite adds then removes it`() = runTest {
-        val favourite = Favourite(
+    fun `toggling a favorite adds then removes it`() = runTest {
+        val favorite = Favorite(
             contentKey = contentKey(ContentKind.MOVIE, 1001),
             kind = ContentKind.MOVIE,
             contentId = 1001,
@@ -543,19 +543,19 @@ class VodRepositoryTest {
             addedAtMillis = 1_700_000_000_000,
         )
 
-        assertFalse(repository.isFavourite(ContentKind.MOVIE, 1001))
-        repository.toggleFavourite(favourite)
-        assertTrue(repository.isFavourite(ContentKind.MOVIE, 1001))
-        repository.toggleFavourite(favourite)
-        assertFalse(repository.isFavourite(ContentKind.MOVIE, 1001))
+        assertFalse(repository.isFavorite(ContentKind.MOVIE, 1001))
+        repository.toggleFavorite(favorite)
+        assertTrue(repository.isFavorite(ContentKind.MOVIE, 1001))
+        repository.toggleFavorite(favorite)
+        assertFalse(repository.isFavorite(ContentKind.MOVIE, 1001))
     }
 
     @Test
-    fun `favourites list newest first`() = runTest {
-        repository.toggleFavourite(favourite(ContentKind.MOVIE, 1, "Older", 1_000))
-        repository.toggleFavourite(favourite(ContentKind.MOVIE, 2, "Newer", 2_000))
+    fun `favorites list newest first`() = runTest {
+        repository.toggleFavorite(favorite(ContentKind.MOVIE, 1, "Older", 1_000))
+        repository.toggleFavorite(favorite(ContentKind.MOVIE, 2, "Newer", 2_000))
 
-        assertEquals(listOf("Newer", "Older"), repository.observeFavourites().first().map { it.name })
+        assertEquals(listOf("Newer", "Older"), repository.observeFavorites().first().map { it.name })
     }
 
     @Test
@@ -576,13 +576,13 @@ class VodRepositoryTest {
     }
 
     @Test
-    fun `an episode favourite is found by its key and removes cleanly`() = runTest {
+    fun `an episode favorite is found by its key and removes cleanly`() = runTest {
         // Episodes have no numeric id, so add, remove and lookup all go through the content key. A
         // remove that missed would leave the row stuck on forever, since a toggle would then only
         // ever add.
         val key = episodeContentKey("3001:hash-1")
-        repository.addFavourite(
-            Favourite(
+        repository.addFavorite(
+            Favorite(
                 contentKey = key,
                 kind = ContentKind.EPISODE,
                 contentId = 0,
@@ -592,11 +592,11 @@ class VodRepositoryTest {
                 addedAtMillis = 1_000,
             ),
         )
-        assertNotNull(repository.favouriteFor(key))
-        assertEquals(ContentKind.EPISODE, repository.favouriteFor(key)!!.kind)
+        assertNotNull(repository.favoriteFor(key))
+        assertEquals(ContentKind.EPISODE, repository.favoriteFor(key)!!.kind)
 
-        repository.removeFavourite(key)
-        assertEquals(null, repository.favouriteFor(key))
+        repository.removeFavorite(key)
+        assertEquals(null, repository.favoriteFor(key))
     }
 
     // -----------------------------------------------------------------------------------------
@@ -615,7 +615,7 @@ class VodRepositoryTest {
         contentId = id,
     )
 
-    private fun favourite(kind: ContentKind, id: Int, name: String, at: Long) = Favourite(
+    private fun favorite(kind: ContentKind, id: Int, name: String, at: Long) = Favorite(
         contentKey = contentKey(kind, id),
         kind = kind,
         contentId = id,

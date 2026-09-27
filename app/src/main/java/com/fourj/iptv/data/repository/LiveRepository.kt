@@ -9,7 +9,7 @@ import com.fourj.iptv.data.local.LiveChannelEntity
 import com.fourj.iptv.data.local.replaceCategoryChannels
 import com.fourj.iptv.data.remote.StreamUrls
 import com.fourj.iptv.data.remote.XtreamNetwork
-import com.fourj.iptv.data.remote.readCatalogueLeniently
+import com.fourj.iptv.data.remote.readCatalogLeniently
 import com.fourj.iptv.data.remote.runCatchingCancellable
 import com.fourj.iptv.data.remote.retrying
 import com.fourj.iptv.data.remote.xtream.LiveCategoryDto
@@ -108,7 +108,7 @@ class LiveRepository(
                 val entities = retrying(label = "get_live_streams[$categoryId]") {
                     api.liveStreamsRaw(categoryId = categoryId).use { response ->
                         val body = response.string()
-                        readCatalogueLeniently(
+                        readCatalogLeniently(
                             body = body,
                             expectedBytes = response.contentLength(),
                             strategy = ListSerializer(LiveStreamDto.serializer()),

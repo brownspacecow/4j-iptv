@@ -9,7 +9,7 @@ import org.junit.Test
  * Worth pinning because the wording is a promise. The cache does not expire on a timer - the panel
  * offers no way to know what changed - so this line is the only thing telling the viewer how old
  * what they are looking at actually is. Getting the units wrong, or calling a week-old shelf
- * "yesterday", makes an indefinitely-cached catalogue look maintained when it is not.
+ * "yesterday", makes an indefinitely-cached catalog look maintained when it is not.
  */
 class CacheAgeTest {
 

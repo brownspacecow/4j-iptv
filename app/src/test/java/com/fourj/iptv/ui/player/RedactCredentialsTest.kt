@@ -43,13 +43,13 @@ class RedactCredentialsTest {
     @Test
     fun `a url with no credentials is left exactly as it was`() {
         // Direct sources come from a CDN and have no credentials in them. Rewriting a url that has
-        // nothing to hide would only make it harder to recognise in a log.
+        // nothing to hide would only make it harder to recognize in a log.
         val direct = "https://cdn.example.com/stream/42.m3u8"
         assertEquals(direct, redactCredentials(direct))
     }
 
     @Test
-    fun `an unrecognised shape is left alone rather than mangled`() {
+    fun `an unrecognized shape is left alone rather than mangled`() {
         for (url in listOf(
             "not a url at all",
             "http://panel.test:8080",

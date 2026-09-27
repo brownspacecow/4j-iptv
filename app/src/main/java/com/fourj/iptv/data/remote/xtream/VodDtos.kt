@@ -83,7 +83,7 @@ data class SeriesDto(
  *  - `{"seasons": [ ... ]}` - season summaries with no episodes at all
  *
  * Kept as raw JSON for [episodes] on purpose: a typed model silently discards whatever it does not
- * recognise, and that is precisely what made this hard to see.
+ * recognize, and that is precisely what made this hard to see.
  */
 @Serializable
 data class SeriesInfoResponse(

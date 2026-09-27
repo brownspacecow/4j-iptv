@@ -10,7 +10,7 @@ import org.junit.Test
  * The numbers the sync screen puts in front of someone.
  *
  * Every one of these is a claim about what the app knows. Getting them wrong is not a cosmetic
- * problem: "everything is synced" when a third of the catalogue was never read is the app telling a
+ * problem: "everything is synced" when a third of the catalog was never read is the app telling a
  * viewer a falsehood with total confidence, and a search that finds nothing is indistinguishable
  * from one that has not been run.
  */

@@ -1,10 +1,10 @@
 # Third-party notices
 
 4J TV is distributed under the GNU General Public License, version 3 (GPL-3.0). It bundles
-third-party software, some of which carries its own licence obligations. Those are set out below.
+third-party software, some of which carries its own license obligations. Those are set out below.
 
 This file covers the components whose obligations the project itself must satisfy. It is not a
-substitute for the licence texts, which ship with the software itself.
+substitute for the license texts, which ship with the software itself.
 
 ---
 
@@ -19,7 +19,7 @@ flavor contains none of this and depends only on the platform's own decoders.
 ### FFmpeg
 
 - Upstream: https://ffmpeg.org/
-- Licence: **LGPL-3.0-or-later** (some components under GPL-2.0-or-later; see FFmpeg's own
+- License: **LGPL-3.0-or-later** (some components under GPL-2.0-or-later; see FFmpeg's own
   `LICENSE.md` and `COPYING.LGPLv3` for the per-file breakdown)
 - Obtained via: NextLib, below. No FFmpeg source is modified in this repository.
 
@@ -33,12 +33,12 @@ version above, and from the NextLib project for the exact build shipped here.
 ### NextLib (nextlib-media3ext)
 
 - Upstream: https://github.com/anilbeesetti/nextlib
-- Licence: **GPL-3.0**
+- License: **GPL-3.0**
 - Artefact: `io.github.anilbeesetti:nextlib-media3ext`
 
 NextLib packages FFmpeg for Android and exposes it to Media3/ExoPlayer as a renderer. Because it
 is GPL-3.0, the `full` flavor is a combined work and is distributed under GPL-3.0. This is why the
-project as a whole is GPL-3.0 rather than a permissive licence — a permissively licensed
+project as a whole is GPL-3.0 rather than a permissive license — a permissively licensed
 application cannot be distributed alongside a GPL-3.0 linked library.
 
 The `lite` flavor does not include NextLib and is not affected by this.
@@ -46,22 +46,22 @@ The `lite` flavor does not include NextLib and is not affected by this.
 ### FFmpeg components
 
 The bundled `libavcodec.so` includes, among others, decoders derived from the following upstream
-projects, each under its own licence as recorded in FFmpeg's `LICENSE.md`:
+projects, each under its own license as recorded in FFmpeg's `LICENSE.md`:
 
-| Component | Licence |
+| Component | License |
 |---|---|
 | libavcodec (AC-3, E-AC-3, DTS, MP2, AAC, H.264, HEVC and others) | LGPL-3.0-or-later |
 | libavutil | LGPL-3.0-or-later |
 | libswresample, libswscale | LGPL-3.0-or-later |
 | libvpx (VP8/VP9) | BSD-3-Clause |
 | Mbed TLS (in FFmpeg's network stack) | Apache-2.0 OR GPL-2.0-or-later |
-| x264 (if present in a given build) | GPL-2.0-or-later, commercial licence available |
+| x264 (if present in a given build) | GPL-2.0-or-later, commercial license available |
 | libx265 (if present in a given build) | GPL-2.0-or-later |
 
 ### Media3 / ExoPlayer
 
 - Upstream: https://github.com/androidx/media
-- Licence: **Apache-2.0**
+- License: **Apache-2.0**
 - Artefacts: `androidx.media3:media3-exoplayer`, `media3-exoplayer-hls`, `media3-ui`,
   `media3-session`, `media3-datasource-okhttp`
 
@@ -93,7 +93,7 @@ than the alpha-only `TvLazyRow` / `TvLazyColumn`.
 ### Coil
 
 - Upstream: https://github.com/coil-kt/coil
-- Licence: **Apache-2.0**
+- License: **Apache-2.0**
 
 ### JUnit and test-only dependencies
 
@@ -107,16 +107,16 @@ here, because it ships in the build as a transitive dependency of OkHttp.
 
 ---
 
-## Verifying the licences of a build
+## Verifying the licenses of a build
 
-The complete, authoritative licence text for each dependency ships inside its own artefact. To
+The complete, authoritative license text for each dependency ships inside its own artefact. To
 list what a given build actually contains:
 
 ```bash
 ./gradlew :app:dependencies
 ```
 
-To inspect the licences of the AARs resolved for a configuration:
+To inspect the licenses of the AARs resolved for a configuration:
 
 ```bash
 ./gradlew :app:dependencies --configuration fullDebugRuntimeClasspath

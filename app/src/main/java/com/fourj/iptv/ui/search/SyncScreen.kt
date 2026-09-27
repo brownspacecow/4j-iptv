@@ -36,7 +36,7 @@ import com.fourj.iptv.ui.theme.LocalUiScale
  * **The panel cannot do better than a best effort**, and this screen says so rather than implying a
  * clean result. It serves no ETag, no Last-Modified and no "changed since", and it truncates large
  * responses - so a sync gets as far as it can and the rest is reported. A progress bar that reached
- * 100% and quietly left a third of the catalogue unreadable would be worse than an honest partial
+ * 100% and quietly left a third of the catalog unreadable would be worse than an honest partial
  * figure.
  */
 @Composable
@@ -160,7 +160,7 @@ private fun statusLine(state: SearchUiState, progress: SyncProgress): String {
         state.isIndexing -> "Syncing. You can leave this screen and it will keep going."
         coverage.total == 0 && !state.isIndexing ->
             if (progress.shelvesTotal == 0) {
-                "Nothing synced yet. Press Start sync to download your catalogue."
+                "Nothing synced yet. Press Start sync to download your catalog."
             } else {
                 "Nothing synced yet."
             }

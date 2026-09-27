@@ -61,7 +61,7 @@ function New-Format {
 # This exists because there is no reliable way to ask GDI+ where the ink is. MeasureString returns
 # the line box, which for a font like this is taller than the cap height and hangs a full descent
 # below the baseline - and "4J" has no descenders, so centring on the line box pushes every pixel
-# of the mark above centre. Deriving it from FontFamily cell metrics instead means encoding which
+# of the mark above center. Deriving it from FontFamily cell metrics instead means encoding which
 # of several font tables GDI+ happens to be using. Scanning the alpha channel measures the thing
 # itself, whatever the font, and costs one pass at startup rather than one per icon.
 function Measure-Ink([double]$em) {
@@ -154,7 +154,7 @@ function Add-Highlight($g, $w, $h) {
     $g.FillRectangle($brush, 0, 0, $w, $bottom)
 }
 
-# Draws "4J" filling $box, and centred on its ink rather than on its line box.
+# Draws "4J" filling $box, and centered on its ink rather than on its line box.
 function Add-Mark($g, $box) {
     $g.InterpolationMode = 'HighQualityBicubic'
     $g.PixelOffsetMode = 'HighQuality'
@@ -166,7 +166,7 @@ function Add-Mark($g, $box) {
     $em = $box.Width / $ink.Width
     $inkW = $em * $ink.Width
     $inkH = $em * $ink.Height
-    # The mark is about 1.9:1, so height never binds - but it is still what has to be centred.
+    # The mark is about 1.9:1, so height never binds - but it is still what has to be centered.
     $dx = $box.X + (($box.Width - $inkW) / 2)
     $dy = $box.Y + (($box.Height - $inkH) / 2)
     $font = New-Object System.Drawing.Font $markFont, ([float]$em), ([System.Drawing.FontStyle]::Bold), ([System.Drawing.GraphicsUnit]::Pixel)

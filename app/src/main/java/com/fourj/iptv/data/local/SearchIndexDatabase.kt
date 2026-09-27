@@ -20,7 +20,7 @@ import kotlinx.coroutines.flow.Flow
  * without writing a migration: there is no user data in the file to lose, and a stale index is
  * rebuilt rather than migrated.
  *
- * The live and VOD caches could not be treated this way. They sit alongside favourites and playback
+ * The live and VOD caches could not be treated this way. They sit alongside favorites and playback
  * progress, and those are the viewer's own data.
  */
 @Entity(
@@ -63,7 +63,7 @@ data class SearchIndexEntity(
  *
  * [nextOffset] is the `start` the next request should ask for. Persisting it is what makes the job
  * resumable across an app restart - without it, closing the app mid-index throws away the work and
- * the next launch re-downloads from the start, which on a catalogue this size is minutes of the
+ * the next launch re-downloads from the start, which on a catalog this size is minutes of the
  * viewer's data connection.
  */
 @Entity(tableName = "index_progress")

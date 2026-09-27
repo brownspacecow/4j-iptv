@@ -153,7 +153,7 @@ class SearchViewModel(
             delay(SEARCH_DEBOUNCE_MILLIS)
             val hits = repository.search(needle)
             // A response for an earlier keystroke must not overwrite a newer one. The job is
-            // cancelled on each keystroke, but a query already past the database cannot be
+            // canceled on each keystroke, but a query already past the database cannot be
             // recalled, so the term is re-checked before the result is accepted.
             if (_state.value.query.trim() != needle) return@launch
             _state.update { it.copy(hits = hits, isSearching = false) }
@@ -163,7 +163,7 @@ class SearchViewModel(
     fun clearQuery() = onQueryChange("")
 
     /**
-     * Walk the whole catalogue into the index.
+     * Walk the whole catalog into the index.
      *
      * **Fetches the shelf list first.** It used to read the cached category lists, which is why
      * pressing Sync on a fresh install indexed live channels and nothing else: the live categories are
@@ -231,7 +231,7 @@ class SearchViewModel(
                 // Rethrown, not reported. CancellationException is an Exception, so a plain
                 // `catch (e: Exception)` swallows it - which breaks structured concurrency, leaves
                 // the job's parent thinking it is still running, and puts "StandaloneCoroutine was
-                // cancelled" on screen as though the provider had failed. Pressing "Stop indexing"
+                // canceled" on screen as though the provider had failed. Pressing "Stop indexing"
                 // did exactly that.
                 throw cancellation
             } catch (e: Exception) {

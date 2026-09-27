@@ -15,7 +15,7 @@ import java.util.concurrent.TimeUnit
  * A stand-in Xtream panel over a real socket, with the repositories pointed at it.
  *
  * Every test that talks to a provider goes through here rather than assembling its own server,
- * profile and Retrofit pair. That matters less for the lines saved than for the behaviour: when the
+ * profile and Retrofit pair. That matters less for the lines saved than for the behavior: when the
  * retry helper changes from three attempts to two, or the profile needs another field, it changes
  * in one place instead of four, and the four copies cannot drift apart.
  *
