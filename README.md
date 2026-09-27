@@ -495,6 +495,18 @@ manual sync, and per-shelf caching with deliberate refresh. Still to do, most va
 - **A running sync can only be stopped from the Sync screen.** It keeps going if you leave, and it is
   resumable so nothing is lost, but the stop button is not elsewhere in the app. Force-stopping the
   app also stops it.
+- **Some series play the wrong episode, and the app cannot tell.** On this provider, Gravity Falls
+  S01E01 is labelled by the panel as stream `2626957` — that is what `get_series_info` says the id is,
+  and the app requests exactly that — but the file served at that id is S01E02. Every episode in the
+  series is off by one the same way. This is **not** the app mis-numbering anything: all 1,024 cached
+  episodes were checked against the numbering the panel puts in its own episode titles and all
+  1,024 agree, with no duplicates, no gaps and no season drift. Forcing `mp4` instead of the declared
+  `mkv` serves the same wrong episode, so it is not the container either. `direct_source` and
+  `custom_sid` both come back empty, so the id-plus-extension URL is the only handle on the stream and
+  there is no second identifier to try. Other clients are believed to get this right, which suggests
+  an id source this app is not using, but which one has not been identified. **No workaround is
+  applied**, deliberately: shifting every episode by one would be wrong for every series that is not
+  affected, and there is no signal that distinguishes the two cases.
 - The debug APK is unsigned, as debug builds are. It is fine for sideloading; a release build needs
   a signing config that is deliberately not committed.
 
