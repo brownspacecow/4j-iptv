@@ -43,6 +43,7 @@ import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.Tracks
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
@@ -52,11 +53,14 @@ import androidx.media3.ui.PlayerView
 import com.fourj.iptv.ui.player.describePlaybackError
 import com.fourj.iptv.domain.model.ContentKind
 import com.fourj.iptv.domain.model.PlaybackProgress
+import com.fourj.iptv.ui.player.TrackSupport
 import com.fourj.iptv.ui.player.audioRenderersFactory
 import com.fourj.iptv.ui.player.isVideoDecodeFailure
 import com.fourj.iptv.ui.player.logSoftwareDecodeSupport
 import com.fourj.iptv.ui.player.redactCredentials
 import com.fourj.iptv.ui.player.softwareVideoRenderersFactory
+import com.fourj.iptv.ui.player.unplayableVideoMessage
+import com.fourj.iptv.ui.player.unplayableVideoTrack
 import androidx.tv.material3.Text
 import kotlinx.coroutines.delay
 
@@ -196,6 +200,38 @@ fun VodPlayerScreen(
                     return
                 }
                 errorText = describePlaybackError(error)
+            }
+
+            /**
+             * Catch a video track that was recognised and then quietly dropped.
+             *
+             * ExoPlayer skips a track no renderer can decode rather than failing, so a format
+             * neither the device nor the bundled software decoder supports plays as audio over a
+             * black screen with no error anywhere. Only someone watching can tell, so the player
+             * has to check for itself - see [unplayableVideoTrack].
+             *
+             * Skipped while the software retry is still pending, because that rebuild is exactly
+             * what is meant to make the track supported, and reporting the problem first would
+             * flash a message at someone whose video is about to work.
+             */
+            override fun onTracksChanged(tracks: Tracks) {
+                if (rebuilding || triedSoftwareVideo) return
+                val undecodable = unplayableVideoTrack(
+                    tracks.groups.map { group ->
+                        TrackSupport(
+                            type = group.type,
+                            supported = group.isSupported(),
+                            // The first sample in the group names the format for every track in it,
+                            // and a group is per-type, so there is nothing finer to ask for.
+                            sampleMimeType = group.getTrackFormat(0).sampleMimeType,
+                        )
+                    },
+                ) ?: return
+                Log.w(
+                    TAG,
+                    "video track cannot be decoded on this device: ${undecodable.sampleMimeType}",
+                )
+                errorText = unplayableVideoMessage(undecodable.sampleMimeType)
             }
         }
         player.addListener(listener)

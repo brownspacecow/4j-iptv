@@ -1,5 +1,6 @@
 package com.fourj.iptv.ui.player
 
+import androidx.media3.common.C
 import androidx.media3.common.PlaybackException
 import androidx.media3.exoplayer.ExoPlaybackException
 import androidx.media3.exoplayer.source.UnrecognizedInputFormatException
@@ -61,6 +62,64 @@ internal fun describePlaybackError(error: PlaybackException): String {
             else -> "This channel would not play. It may be offline or restricted."
         }
     }
+}
+
+/**
+ * One track group as the player sees it: what kind it is, whether anything can decode it, and the
+ * format it is in.
+ *
+ * A holder rather than three parallel lists because the three belong together - reporting "no
+ * decoder" without saying which format would be the least useful version of the message.
+ */
+internal data class TrackSupport(
+    val type: Int,
+    val supported: Boolean,
+    val sampleMimeType: String? = null,
+)
+
+/**
+ * The video track group that no renderer on this device can decode, or null if video is fine (or
+ * there is no video, which is normal for a radio channel).
+ *
+ * Returns the group rather than just its MIME type on purpose. A group can be unsupported while
+ * reporting no sample type at all, and a decision that came back as a null *format* would read to
+ * the caller as "nothing to report" - reintroducing the silence this exists to remove.
+ *
+ * ExoPlayer treats an undecodable track as one to *skip*, not as an error: it drops the track and
+ * carries on playing whatever is left. For a stream with both, that means a black screen with the
+ * audio playing and nothing at all in the log to say why - which is the worst failure mode there
+ * is, because from the sofa it is indistinguishable from a crashed app.
+ *
+ * Observed for real: an episode served as `video/mp4v-es` (MPEG-4 part 2, the common old `.avi`
+ * encode). The device's own decoder claimed the format and then died; the bundled software decoder
+ * does not list `video/mp4v-es` at all, so the retry the player makes after a decoder failure
+ * replaced a renderer that failed loudly with one that declines quietly. The track went unsupported
+ * and the picture went black.
+ *
+ * Taking plain values rather than a `Tracks` keeps this testable without an ExoPlayer runtime, in
+ * the same way [shouldRetryWithSoftwareVideo] does.
+ */
+internal fun unplayableVideoTrack(trackGroups: List<TrackSupport>): TrackSupport? =
+    trackGroups.firstOrNull { it.type == C.TRACK_TYPE_VIDEO && !it.supported }
+
+/**
+ * What to say when the video is understood but undecodable.
+ *
+ * Named by format where the format is known, because "it will not play" sends people to check
+ * their subscription, and the subscription is fine - the file is simply an encoding this television
+ * has no decoder for. The `full` build's software decoders do not cover every old codec either,
+ * so this is not a build-specific problem and must not be worded as one.
+ */
+internal fun unplayableVideoMessage(mimeType: String?): String {
+    val format = when {
+        mimeType == null -> "an unusual video format"
+        mimeType.contains("mp4v", ignoreCase = true) ->
+            "old-style MPEG-4 video, which most modern televisions cannot decode"
+        mimeType.contains("mpeg2", ignoreCase = true) -> "MPEG-2 video"
+        else -> mimeType
+    }
+    return "This episode is $format. There is sound but no picture, because no decoder on this " +
+        "device can read it. The provider's copy is the problem, not your subscription."
 }
 
 /**
