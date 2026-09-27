@@ -94,7 +94,7 @@ sdk.dir=/path/to/Android/sdk
 Then:
 
 ```bash
-./gradlew :app:testFullDebugUnitTest     # 175 unit tests
+./gradlew :app:testFullDebugUnitTest     # 189 unit tests
 ./gradlew :app:assembleFullDebug         # APK with software audio + video fallback (43.2 MB debug)
 ./gradlew :app:assembleLiteDebug         # 20.4 MB, no software decoders
 ```
@@ -106,10 +106,30 @@ targetSdk 35.
 Both flavors are also produced per ABI in a release build (`assembleFullRelease`), which is where
 the size difference really shows.
 
+### Icon artwork
+
+The launcher icons, the adaptive-icon layers and the TV home screen banner are all generated, not
+hand-exported:
+
+```powershell
+powershell -File tools\make-icons.ps1
+```
+
+Ten files across five densities drift apart the first time the design changes, so the font, the
+letter tracking and the sizes live in that script and the PNGs are its output. The mark is rendered
+in **Segoe UI Black** — with `Arial Black`, `Franklin Gothic Heavy` and `Impact` as fallbacks — and
+only the rendered pixels are committed; no font file is redistributed, which is a rendering of two
+characters rather than a distribution of a typeface. The script needs Windows, since GDI+ is the
+only rasteriser available here.
+
+The adaptive-icon background is the one exception and is still a vector,
+`res/drawable/ic_launcher_background.xml`, because a gradient costs nothing to keep crisp. Its
+stops are duplicated in the script, so change them in both.
+
 ## Testing
 
-The unit tests run on the JVM with no device — 175 of them. A few are worth knowing about, because
-each exists to stop a specific bug from coming back:
+The unit tests run on the JVM with no device — 189 on the full flavor, 182 on lite. A few are
+worth knowing about, because each exists to stop a specific bug from coming back:
 
 - **`SearchIndexingTest`** stands up a mock Xtream panel over a real socket. It covers a shelf that
   cannot be read not ending the run, a completed shelf not being re-fetched, a failed shelf being
