@@ -34,11 +34,12 @@ $markFont = @('Segoe UI Black', 'Arial Black', 'Franklin Gothic Heavy', 'Impact'
 if (-not $markFont) { throw 'No usable heavy sans font found.' }
 
 # Negative tracking, as a fraction of the em. Zero leaves a visible seam between the two glyphs,
-# which reads as two characters rather than one mark. The 4 carries a wide right sidebearing in
-# this face, so it needs more than a hair of negative tracking to close up: -0.08 was still an
-# obvious word gap, -0.15 is where the pair reads as a single lockup without the 4's flag touching
-# the J.
-$tracking = -0.15
+# which reads as two characters rather than one mark. The 4 carries a wide right sidebearing in this
+# face, so it takes a lot of negative tracking to close up: -0.08 was still an obvious word gap, -0.15
+# was better but the pair still read as "4 J" rather than "4J", and -0.24 is where the two sit close
+# enough to look like one wordmark. Watch the reported ink width when changing this - if it stops
+# shrinking, the glyphs have started to collide rather than close up.
+$tracking = -0.24
 
 $stops = [System.Drawing.Color[]]@(
     [System.Drawing.Color]::FromArgb(255, 0x43, 0x38, 0xCA),
