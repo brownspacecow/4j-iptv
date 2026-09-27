@@ -21,3 +21,16 @@ Thumbs.db
 
 # Kotlin compiler session/error logs
 .kotlin/
+
+# Extracted dependency artifacts.
+#
+# 105 compiled Media3 .class files were committed here by accident, in 8eb9705, apparently from a
+# build step that unpacked the dependency's classes into the working tree and a `git add -A` that
+# swept them in. The build gets Media3 from Maven through libs.androidx.media3.* in
+# app/build.gradle.kts and never reads this directory, so the files served no purpose - but they
+# were another project's compiled code sitting in a GPL-licensed repository, which is a licence
+# problem rather than only a tidiness one.
+#
+# Ignored as a whole directory rather than a *.class pattern, because the fix is "no vendored
+# dependencies" and that is better stated than "no class files, but you may still vendor them".
+/androidx/
