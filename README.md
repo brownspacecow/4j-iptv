@@ -495,20 +495,52 @@ manual sync, and per-shelf caching with deliberate refresh. Still to do, most va
 - **A running sync can only be stopped from the Sync screen.** It keeps going if you leave, and it is
   resumable so nothing is lost, but the stop button is not elsewhere in the app. Force-stopping the
   app also stops it.
-- **Some series play the wrong episode, and the app cannot tell.** On this provider, Gravity Falls
-  S01E01 is labelled by the panel as stream `2626957` — that is what `get_series_info` says the id is,
-  and the app requests exactly that — but the file served at that id is S01E02. Every episode in the
-  series is off by one the same way. This is **not** the app mis-numbering anything: all 1,024 cached
-  episodes were checked against the numbering the panel puts in its own episode titles and all
-  1,024 agree, with no duplicates, no gaps and no season drift. Forcing `mp4` instead of the declared
-  `mkv` serves the same wrong episode, so it is not the container either. `direct_source` and
-  `custom_sid` both come back empty, so the id-plus-extension URL is the only handle on the stream and
-  there is no second identifier to try. Other clients are believed to get this right, which suggests
-  an id source this app is not using, but which one has not been identified. **No workaround is
-  applied**, deliberately: shifting every episode by one would be wrong for every series that is not
-  affected, and there is no signal that distinguishes the two cases.
-- The debug APK is unsigned, as debug builds are. It is fine for sideloading; a release build needs
+- **Some series have mislabelled episodes, and the app cannot tell.** This was first recorded here as
+  "every episode is served off by one", and **that was wrong** — it was read off a black screen. The
+  original test played an episode, could not see a frame, and the mismatch that was inferred from it
+  turned out to have a much simpler explanation. See
+  [Episodes that play black](#episodes-that-play-black) for why no frame appeared.
+
+  What the panel actually does, confirmed against SpongeBob's season 1: **it transposes two
+  episodes' titles.** It labels `S01E02` *"Reef Blower"* and `S01E04` *"Bubblestand"*, which are each
+  other's real titles — `S01E01` *"Help Wanted"* and `S01E03` *"Tea at the Treedome"* are correct. So
+  the panel's own metadata is inconsistent with itself, and the app shows it faithfully, because the
+  panel is the only source of episode names available. Play `S01E02` and you get Bubblestand under the
+  name Reef Blower; the file is right and the label is wrong, which is indistinguishable from the
+  opposite unless you know the show.
+
+  **No correction is applied**, and one cannot be: the true episode order is not in anything the
+  provider returns, and a guess based on how the wrongness happens to look in one series would be
+  wrong for every other. The id the panel gives is requested exactly, so nothing is being mismatched
+  in the app. **If you know a series is mislabelled, trust the file over the title.**
+- **The debug APK is unsigned**, as debug builds are. It is fine for sideloading; a release build needs
   a signing config that is deliberately not committed.
+
+## Episodes that play black
+
+A separate fault, found while chasing the above and now fixed to at least be visible.
+
+Many of this provider's older `.avi` episodes are MPEG-4 part 2 (`video/mp4v-es`) at 512×384. The
+emulator's own decoder claimed the format and then died, and the bundled software decoder
+**does not list `video/mp4v-es` at all** — its supported formats are `video/avc`, `video/hevc`,
+`video/mpeg`, `video/mpeg2`, `video/x-vnd.on2.vp8` and `video/x-vnd.on2.vp9`. So the app's usual
+"retry with the software decoder" replaced a renderer that failed loudly with one that declines
+quietly, ExoPlayer dropped the video track as undecodable, and the episode played **its audio over a
+black screen with no error anywhere** — the position advanced normally to 0:44 of an 11:04 film.
+
+ExoPlayer treats an undecodable track as one to skip rather than one to fail on, so nothing is logged
+and nothing is raised. The player now watches for an unsupported video track and says so, naming the
+format and making clear the provider's copy is at fault rather than the subscription.
+
+**This is not fully verified on a device** — the emulator's outbound network is currently blocked by a
+VPN on the host, so only the unit tests have been run. It is a reporting change, not a decoding
+change: **MPEG-4 part 2 still will not play.** Google's own `media3-exoplayer-ffmpeg` would cover it,
+but adding it alongside NextLib puts two FFmpeg builds in one APK, both shipping `libavcodec.so`.
+Switching wholesale from NextLib to Google's build is the real fix and has not been attempted.
+
+**Sideload and try an old `.avi` episode.** If it plays on your television, the set has a decoder
+NextLib's does not, and the app should keep hardware first for that format. If it does not, it will
+now say why.
 
 ## Third-party notices
 
